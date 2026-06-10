@@ -1,0 +1,12 @@
+{
+  "name": "g-clone-world-server",
+  "version": "1.0.0",
+  "description": "Gothic browser homage — persistent world server (zero dependencies)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
