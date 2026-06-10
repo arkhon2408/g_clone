@@ -11,7 +11,10 @@ const DEMO_MODE = window.location.search.indexOf('demo') >= 0;
 function lockPointer() {
   if (IS_TOUCH) return; // touch devices have no pointer lock; drag-to-look instead
   if (GAME.started && !GAME.uiOpen && !DEMO_MODE && document.pointerLockElement !== canvas) {
-    canvas.requestPointerLock();
+    const r = canvas.requestPointerLock();
+    // browsers refuse a re-lock right after Esc; the paused hint stays up, so
+    // the refusal needs no further handling — just keep it off the console
+    if (r && r.catch) r.catch(function() {});
   }
 }
 
@@ -42,6 +45,11 @@ function initInput() {
     if (!GAME.started) {
       if (e.code === 'Enter') startGame(false);
       return;
+    }
+    // paused with the cursor released — any game key resumes (Esc stays paused)
+    if (!GAME.uiOpen && !IS_TOUCH && !DEMO_MODE && e.code !== 'Escape'
+        && document.pointerLockElement !== canvas) {
+      lockPointer();
     }
     if (e.code === 'KeyE' && !GAME.uiOpen) {
       const t = nearestTalkable();

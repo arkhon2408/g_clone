@@ -62,7 +62,7 @@ sock.on('data', function(data) {
     setInterval(function() {
       yaw += 0.15;
       sock.write(frame(JSON.stringify({ t: 's', x: X, z: Z, yaw: yaw, m: 0, a: 0,
-                                        hp: 100, sw: 1, lv: 2 })));
+                                        hp: 100, sw: 1, lv: 2, tc: 1 })));
     }, 100);
   }
   while (true) {

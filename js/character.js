@@ -69,23 +69,31 @@ function drawHumanoid(c) {
       drawPart(M4.chain(shoulder, M4.translate(0, -1.26, 0), M4.scale(0.055, 0.88, 0.025)),
                tintCol([0.65, 0.66, 0.70], flash)); // blade
     }
-    // lit torch in the left (off) hand
+    // lit torch in the left (off) hand — upright, leaning out past the arm so
+    // it reads from the third-person camera behind the player
     if (s === -1 && c.torchLit && a.deadT <= 0) {
-      drawPart(M4.chain(shoulder, M4.translate(0, -0.86, 0.10), M4.rotX(-0.5),
+      drawPart(M4.chain(shoulder, M4.translate(-0.10, -0.50, 0.16), M4.rotZ(0.22),
                         M4.scale(0.06, 0.62, 0.06)),
-               tintCol([0.30, 0.22, 0.13], flash)); // shaft
-      drawPart(M4.chain(shoulder, M4.translate(0, -0.62, 0.34), M4.rotX(-0.5),
-                        M4.scale(0.11, 0.14, 0.11)),
-               tintCol([1.0, 0.55, 0.12], flash)); // ember head
+               tintCol([0.30, 0.22, 0.13], flash)); // shaft rising from the fist
+      drawPart(M4.chain(shoulder, M4.translate(-0.17, -0.15, 0.16), M4.rotZ(0.22),
+                        M4.scale(0.11, 0.15, 0.11)),
+               tintCol([1.0, 0.55, 0.12], flash)); // ember head at the top
     }
   }
 }
 
-// Where a character's torch flame sits in world space (matches the pose above).
+// Where a character's torch flame sits in world space: the ember position run
+// through the same body-bob + shoulder-swing chain as drawHumanoid, so the
+// flame rides the torch head while walking.
 function torchWorldPos(c) {
-  const s = Math.sin(c.yaw), co = Math.cos(c.yaw);
-  const lx = -0.31, ly = 1.45 - 0.55, lz = 0.42; // left shoulder, lowered hand, forward
-  return [c.pos.x + lx * co + lz * s, c.pos.y + ly + 0.25, c.pos.z - lx * s + lz * co];
+  const a = c.anim;
+  const bob = Math.abs(Math.sin(a.walkPhase)) * 0.06 * a.moveAmt;
+  const swing = Math.sin(a.walkPhase) * 0.7 * a.moveAmt; // left arm: ang = -swing*s, s = -1
+  const m = M4.chain(
+    M4.translate(c.pos.x, c.pos.y + bob, c.pos.z), M4.rotY(c.yaw),
+    M4.translate(-0.31, 1.45, 0), M4.rotX(swing),
+    M4.translate(-0.17, -0.15, 0.16));
+  return [m[12], m[13], m[14]];
 }
 
 function drawWolf(c) {

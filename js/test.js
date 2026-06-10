@@ -54,6 +54,8 @@ if (window.location.search.indexOf('oreshot') >= 0) {
 if (window.location.search.indexOf('mpshot') >= 0) {
   window.addEventListener('DOMContentLoaded', function() {
     startGame(true);
+    GAME.player.items['Torch'] = 1; // both we and the bot carry lit torches
+    GAME.player.torchLit = true;
     const m = /[?&]server=([^&]+)/.exec(window.location.search);
     if (m) {
       const httpUrl = decodeURIComponent(m[1]).replace(/^ws/, 'http');
