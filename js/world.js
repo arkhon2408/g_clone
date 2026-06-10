@@ -103,27 +103,6 @@ const COL_WOOD_DK = [0.28, 0.20, 0.12];
 const COL_STONE = [0.42, 0.40, 0.38];
 const COL_ROOF = [0.45, 0.30, 0.18];
 
-function addTree(g, x, z, rng) {
-  const y = terrainH(x, z);
-  const s = 0.8 + rng() * 0.7;
-  const gr = 0.16 + rng() * 0.08;
-  addCylinder(g, x, y - 0.3, z, 0.22 * s, 1.8 * s, 5, COL_WOOD_DK);
-  const green = [0.10 + rng() * 0.05, 0.26 + rng() * 0.08, 0.10 + rng() * 0.04];
-  addCylinder(g, x, y + 1.2 * s, z, 1.6 * s, 2.4 * s, 7, green, 0);
-  addCylinder(g, x, y + 2.7 * s, z, 1.15 * s, 2.0 * s, 7, [green[0] + gr * 0.2, green[1] + gr * 0.3, green[2]], 0);
-  addCylinder(g, x, y + 4.0 * s, z, 0.75 * s, 1.6 * s, 7, green, 0);
-  WORLD.colliders.push({ x: x, z: z, r: 0.55 * s });
-}
-
-function addRock(g, x, z, rng) {
-  const y = terrainH(x, z);
-  const s = 0.8 + rng() * 1.6;
-  const c = 0.38 + rng() * 0.12;
-  addBox(g, x, y + 0.3 * s, z, 1.4 * s, 1.0 * s, 1.1 * s, [c, c, c * 0.98], rng() * 6.28);
-  addBox(g, x + 0.5 * s, y + 0.15 * s, z + 0.3 * s, 0.9 * s, 0.6 * s, 0.8 * s, [c * 0.9, c * 0.9, c * 0.88], rng() * 6.28);
-  WORLD.colliders.push({ x: x, z: z, r: 0.9 * s });
-}
-
 function addHut(g, x, z, yaw, rng) {
   const y = terrainH(x, z);
   const w = 4.2 + rng() * 0.8, d = 3.4 + rng() * 0.6, h = 2.5;
@@ -254,45 +233,58 @@ function buildWorld() {
   }
 
   // ---- gather nodes (dynamic meshes drawn per frame so they can vanish) ----
-  function nodeMesh(builder) {
+  // EVERY tree and rock in the valley is a harvestable, respawning node.
+  function buildTreeVariant(seed) {
     const gn = { v: [] };
-    builder(gn);
+    const green = [0.10 + seed * 0.025, 0.26 + seed * 0.04, 0.10 + seed * 0.02];
+    const hi = [green[0] + 0.03, green[1] + 0.06, green[2]];
+    addCylinder(gn, 0, -0.3, 0, 0.22, 1.8, 5, COL_WOOD_DK);
+    addCylinder(gn, 0, 1.2, 0, 1.6, 2.4, 7, green, 0);
+    addCylinder(gn, 0, 2.7, 0, 1.15, 2.0, 7, hi, 0);
+    addCylinder(gn, 0, 4.0, 0, 0.75, 1.6, 7, green, 0);
     return new Mesh(gn.v);
   }
-  WORLD.nodeMeshes.tree = nodeMesh(function(gn) {
-    addCylinder(gn, 0, -0.4, 0, 0.30, 4.8, 5, [0.32, 0.23, 0.14]);
-    addBox(gn, 0.65, 3.0, 0.15, 1.7, 0.14, 0.14, [0.27, 0.19, 0.12], 0.5);
-    addBox(gn, -0.55, 3.7, -0.2, 1.4, 0.12, 0.12, [0.29, 0.21, 0.13], 2.3);
-    addBox(gn, 0.2, 2.2, -0.5, 1.2, 0.12, 0.12, [0.27, 0.19, 0.12], 4.1);
-  });
-  WORLD.nodeMeshes.stone = nodeMesh(function(gn) {
-    addBox(gn, 0, 0.55, 0, 1.6, 1.2, 1.3, [0.56, 0.54, 0.51], 0.5);
-    addBox(gn, 0.55, 0.32, 0.4, 1.0, 0.7, 0.9, [0.62, 0.60, 0.56], 1.4);
-    addBox(gn, -0.5, 0.27, -0.35, 0.8, 0.6, 0.7, [0.51, 0.49, 0.47], 2.6);
-  });
-  WORLD.nodeMeshes.ore = nodeMesh(function(gn) {
+  function buildRockVariant(c, y1, y2) {
+    const gn = { v: [] };
+    addBox(gn, 0, 0.3, 0, 1.4, 1.0, 1.1, [c, c, c * 0.98], y1);
+    addBox(gn, 0.5, 0.15, 0.3, 0.9, 0.6, 0.8, [c * 0.9, c * 0.9, c * 0.88], y2);
+    return new Mesh(gn.v);
+  }
+  function buildOreMesh(scale) {
+    const gn = { v: [] };
     addBox(gn, 0, 0.5, 0, 1.8, 1.1, 1.5, [0.20, 0.17, 0.18], 0.7);
     // magic ore burns from within — bright even at night
     addBox(gn, 0.2, 1.15, 0.1, 0.36, 0.95, 0.36, [1.0, 0.28, 0.14], 0.4);
     addBox(gn, -0.42, 0.95, -0.2, 0.28, 0.72, 0.28, [0.95, 0.32, 0.10], 1.5);
     addBox(gn, 0.5, 0.85, -0.42, 0.22, 0.55, 0.22, [1.0, 0.42, 0.16], 2.3);
-  });
-  function addNode(kind, x, z, respawn, hits) {
+    return new Mesh(gn.v);
+  }
+  WORLD.nodeMeshes.tree = [buildTreeVariant(0), buildTreeVariant(1), buildTreeVariant(2)];
+  WORLD.nodeMeshes.stone = [buildRockVariant(0.42, 0.8, 2.2), buildRockVariant(0.50, 1.9, 4.4)];
+  WORLD.nodeMeshes.ore = [buildOreMesh()];
+
+  function addNode(kind, x, z, respawn, hits, opts) {
+    opts = opts || {};
     WORLD.nodes.push({ kind: kind, x: x, z: z, y: terrainH(x, z),
                        yaw: hash2(Math.round(x), Math.round(z)) * 6.28,
-                       r: kind === 'tree' ? 0.5 : 0.9, hits: hits, maxHits: hits,
+                       r: opts.r || 0.9, scale: opts.scale || 1,
+                       v: opts.v || 0, mult: opts.mult || 1,
+                       hits: hits, maxHits: hits,
                        alive: true, respawnT: 0, respawn: respawn, shakeT: 0 });
   }
-  for (const s of [[46, 64], [56, 50], [40, 84], [-46, 70], [-40, 90]]) addNode('tree', s[0], s[1], 90, 3);
-  for (const s of [[24, 60], [-28, 52], [60, 36]]) addNode('stone', s[0], s[1], 75, 3);
-  addNode('ore', -46, -86, 150, 4); // the one ore vein — wolf country
+  // the lesser ore vein — wolf country
+  addNode('ore', -46, -86, 150, 4);
+  // the rich vein by the old mine — shadowbeast country; double yield per strike
+  addNode('ore', 10, -112, 180, 5, { scale: 1.3, r: 1.2, mult: 2 });
 
-  // ---- forest ----
+  // ---- forest (all of it choppable) ----
   let placed = 0;
   for (let tries = 0; tries < 900 && placed < 170; tries++) {
     const x = (rng() * 2 - 1) * 142;
     const z = (rng() * 2 - 1) * 142;
     const r = Math.hypot(x, z);
+    const s = 0.8 + rng() * 0.7;
+    const v = Math.floor(rng() * 3);
     if (r < 44 || r > 138) continue;
     if (distToPath(x, z) < 5.5) continue;
     if (Math.hypot(x + 70, z - 60) < 23) continue;      // lake
@@ -302,20 +294,21 @@ function buildWorld() {
     if (WORLD.nodes.some(function(nd) { return Math.hypot(x - nd.x, z - nd.z) < 4; })) continue;
     if (terrainH(x, z) < WORLD.waterLevel + 0.5) continue;
     if (terrainNormalY(x, z) < 0.75) continue;
-    addTree(g, x, z, rng);
+    addNode('tree', x, z, 90, 3, { r: 0.55 * s, scale: s, v: v });
     placed++;
   }
 
-  // ---- rocks ----
+  // ---- rocks (all of them quarryable) ----
   for (let i = 0; i < 55; i++) {
     const x = (rng() * 2 - 1) * 145;
     const z = (rng() * 2 - 1) * 145;
     const r = Math.hypot(x, z);
+    const s = 0.8 + rng() * 1.6;
     if (r < 40) continue;
     if (distToPath(x, z) < 4) continue;
     if (WORLD.nodes.some(function(nd) { return Math.hypot(x - nd.x, z - nd.z) < 4; })) continue;
     if (terrainH(x, z) < WORLD.waterLevel + 0.4) continue;
-    addRock(g, x, z, rng);
+    addNode('stone', x, z, 75, 3, { r: 0.9 * s, scale: s, v: i % 2 });
   }
 
   WORLD.mesh = new Mesh(g.v);

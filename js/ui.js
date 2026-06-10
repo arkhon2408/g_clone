@@ -41,6 +41,13 @@ function initUI() {
   document.getElementById('chrClose').addEventListener('click', function() {
     if (GAME.uiOpen === 'character') toggleCharacter();
   });
+  // explicit send/cancel buttons so chat works without a hardware keyboard
+  document.getElementById('chatSend').addEventListener('click', function() {
+    if (GAME.uiOpen === 'chat') closeChat(true);
+  });
+  document.getElementById('chatCancel').addEventListener('click', function() {
+    if (GAME.uiOpen === 'chat') closeChat(false);
+  });
 }
 
 function uiMsg(text) {

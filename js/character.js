@@ -159,8 +159,54 @@ function drawMolerat(c) {
            tintCol([0.5, 0.38, 0.32], flash));
 }
 
+function drawShadowbeast(c) {
+  const a = c.anim;
+  let base = M4.mul(M4.translate(c.pos.x, c.pos.y - a.deadT * 0.5, c.pos.z), M4.rotY(c.yaw));
+  if (a.deadT > 0) base = M4.mul(base, M4.rotZ(a.deadT * Math.PI / 2));
+  if (a.attackT > 0) base = M4.mul(base, M4.rotX(-Math.sin(Math.min(a.attackT, 1) * Math.PI) * 0.7));
+  base = M4.mul(base, M4.scale(1.8, 1.8, 1.8)); // a wolf's silhouette, half again as tall
+  const flash = a.flash;
+  const fur = [0.13, 0.11, 0.14];
+  const furD = [0.09, 0.08, 0.10];
+  const swing = Math.sin(a.walkPhase) * 0.7 * a.moveAmt;
+  // body + chest
+  drawPart(M4.chain(base, M4.translate(0, 0.72, -0.12), M4.scale(0.54, 0.52, 1.20)),
+           tintCol(fur, flash));
+  drawPart(M4.chain(base, M4.translate(0, 0.76, 0.34), M4.scale(0.60, 0.60, 0.52)),
+           tintCol(furD, flash));
+  // spines along the back
+  for (let i = 0; i < 4; i++) {
+    drawPart(M4.chain(base, M4.translate(0, 1.04, 0.25 - i * 0.28), M4.scale(0.07, 0.22, 0.10)),
+             tintCol(furD, flash));
+  }
+  // head, jaw, horn, glowing eyes
+  drawPart(M4.chain(base, M4.translate(0, 1.02, 0.74), M4.scale(0.38, 0.34, 0.38)),
+           tintCol(fur, flash));
+  drawPart(M4.chain(base, M4.translate(0, 0.90, 1.04), M4.scale(0.22, 0.18, 0.34)),
+           tintCol(furD, flash));
+  drawPart(M4.chain(base, M4.translate(0, 1.26, 0.86), M4.rotX(0.5), M4.scale(0.07, 0.30, 0.07)),
+           tintCol([0.75, 0.72, 0.65], flash));
+  for (const s of [-1, 1]) {
+    drawPart(M4.chain(base, M4.translate(s * 0.12, 1.06, 0.93), M4.scale(0.06, 0.05, 0.03)),
+             tintCol([1.0, 0.25, 0.1], flash));
+  }
+  // legs
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const m = M4.chain(base, M4.translate(sx * 0.22, 0.52, sz * 0.46 - 0.10),
+                         M4.rotX(swing * sx * sz),
+                         M4.translate(0, -0.26, 0), M4.scale(0.15, 0.52, 0.17));
+      drawPart(m, tintCol(furD, flash));
+    }
+  }
+  // tail
+  drawPart(M4.chain(base, M4.translate(0, 0.88, -0.84), M4.rotX(-0.4), M4.scale(0.11, 0.11, 0.60)),
+           tintCol(furD, flash));
+}
+
 function drawCharacter(c) {
   if (c.kind === 'molerat') drawMolerat(c);
   else if (c.kind === 'wolf') drawWolf(c);
+  else if (c.kind === 'shadowbeast') drawShadowbeast(c);
   else drawHumanoid(c);
 }

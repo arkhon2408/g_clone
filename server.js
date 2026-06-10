@@ -99,6 +99,7 @@ function parseFrames(c) {
 const MR_SPOTS = [[22, 92], [30, 100], [26, 106], [34, 92], [18, 102], [38, 104], [28, 86]];
 const B_SPOTS = [[58, -66], [63, -70], [55, -71]];
 const W_SPOTS = [[-42, -82], [-51, -90], [-44, -93]]; // wolves around the ore vein
+const SB_SPOTS = [[6, -108], [14, -115]];             // shadowbeasts at the rich vein
 
 const npcs = [];
 for (const s of MR_SPOTS) {
@@ -112,6 +113,10 @@ for (const s of B_SPOTS) {
 for (const s of W_SPOTS) {
   npcs.push({ tpl: 'wolf', x: s[0], z: s[1], maxhp: 55, dmg: 12, speed: 5.2,
               aggroR: 12, attackR: 1.9, leashR: 24, atkRate: 1.1, respawn: 90 });
+}
+for (const s of SB_SPOTS) {
+  npcs.push({ tpl: 'shadowbeast', x: s[0], z: s[1], maxhp: 300, dmg: 36, speed: 5.4,
+              aggroR: 14, attackR: 2.2, leashR: 26, atkRate: 1.0, respawn: 180 });
 }
 npcs.forEach(function(n, i) {
   n.id = i;

@@ -28,10 +28,12 @@ Useful URL parameters:
 - **A quest** — clear five molerats from the old mine path for 50 ore and a blade.
 - **Combat** — melee swings with timing, aggro/chase/leash AI, XP and level-ups.
 - **Hostiles** — molerats on the mine path, bandits at the ruined watchtower (NE),
-  wolves around the ore vein (NW).
-- **Gathering** — buy a woodcutter's axe and chop the dry pines, buy a pickaxe and
-  break the stone blocks or the single glowing **ore vein** (wolf country). Nodes
-  respawn after a while; the vein takes the longest.
+  wolves around the ore vein (NW), and **shadowbeasts** at the rich vein by the old
+  mine — without the Ore blade and level 5 they will simply kill you.
+- **Gathering** — **every tree and every rock in the valley is harvestable**: a
+  woodcutter's axe fells trees, a pickaxe breaks rocks and the two glowing ore
+  veins (the lesser one in wolf country, the rich one — double yield — in
+  shadowbeast country). Everything regrows/respawns after a while.
 - **An economy** — sell wood/stone/raw ore to Whistler. His stock is capped; his
   smelter slowly burns it down into nuggets (two goods in, one good's worth of ore
   out — lossy on purpose, so ore never floods the valley) which frees room to buy
@@ -80,9 +82,10 @@ world). The static game stays on Netlify (or any static host); `server.js` runs
 separately — it's a zero-dependency Node script (the WebSocket protocol is
 implemented by hand, no npm install needed).
 
-The server owns world time (saved to `world.json`, so it survives restarts) and all
-hostile NPCs: their AI, deaths and **respawns** (molerats 60s, wolves 90s, bandits
-120s). Hits are validated server-side. Players cannot kill each other and camp folk
+Players carry their **level above their head**, next to their name. The server
+owns world time (saved to `world.json`, so it survives restarts) and all hostile
+NPCs: their AI, deaths and **respawns** (molerats 60s, wolves 90s, bandits 120s,
+shadowbeasts 180s). Hits are validated server-side. Players cannot kill each other and camp folk
 can never be killed — the one sanctioned exception is the **duel**: stand next to
 another player, press G, and if they accept (Y) you fight until one of you is
 beaten to the yield point (10 HP — never death). The loser forfeits **half their

@@ -211,13 +211,13 @@ function render() {
   WORLD.mesh.draw();
 
   // gather nodes (they shake when struck and vanish when depleted)
+  gl.uniform3f(PROG.lit.u.uTint, 1, 1, 1);
   for (const nd of WORLD.nodes) {
     if (!nd.alive) continue;
-    const sh = nd.shakeT > 0 ? 1 + Math.sin(worldClock * 55) * 0.05 * nd.shakeT : 1;
+    const sh = nd.scale * (nd.shakeT > 0 ? 1 + Math.sin(worldClock * 55) * 0.05 * nd.shakeT : 1);
     gl.uniformMatrix4fv(PROG.lit.u.uModel, false,
       M4.chain(M4.translate(nd.x, nd.y, nd.z), M4.rotY(nd.yaw), M4.scale(sh, sh, sh)));
-    gl.uniform3f(PROG.lit.u.uTint, 1, 1, 1);
-    WORLD.nodeMeshes[nd.kind].draw();
+    WORLD.nodeMeshes[nd.kind][nd.v].draw();
   }
 
   for (const n of GAME.npcs) drawCharacter(n);

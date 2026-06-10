@@ -264,7 +264,8 @@ function netApplyState(r, s) {
   r.hp = s[5];
   r.anim.deadT = r.hp <= 0 ? Math.max(r.anim.deadT, 0.01) : 0;
   r.hasSword = !!s[6];
-  r.maxhp = 100 + (Math.max(1, s[7] | 0) - 1) * 20;
+  r.lv = Math.max(1, s[7] | 0);
+  r.maxhp = 100 + (r.lv - 1) * 20;
   r.torchLit = !!s[8];
 }
 
@@ -384,7 +385,7 @@ function openChat() {
   if (!NET.active || GAME.uiOpen) return;
   GAME.uiOpen = 'chat';
   document.exitPointerLock();
-  document.getElementById('chatWrap').style.display = 'block';
+  document.getElementById('chatWrap').style.display = 'flex';
   const inp = document.getElementById('chatInput');
   inp.value = '';
   inp.focus();
@@ -425,7 +426,8 @@ function netDrawNameTags(proj, view) {
     const bubble = (r.chatT > 0 && r.chatMsg)
       ? '<div class="chatbubble">' + escapeHtml(r.chatMsg) + '</div>' : '';
     html += '<div class="nametag" style="left:' + sx.toFixed(2) + '%;top:' + sy.toFixed(2)
-          + '%">' + bubble + escapeHtml(r.name) + '</div>';
+          + '%">' + bubble + escapeHtml(r.name)
+          + ' <span class="taglv">Lv ' + (r.lv || 1) + '</span></div>';
   }
   cont.innerHTML = html;
 }

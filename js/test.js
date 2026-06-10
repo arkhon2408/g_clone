@@ -156,13 +156,21 @@ if (window.location.search.indexOf('autotest') >= 0) {
     check('torch lights', p.torchLit === true);
     toggleTorch();
 
-    const pine = WORLD.nodes.filter(function(n) { return n.kind === 'tree'; })[0];
+    const treeCount = WORLD.nodes.filter(function(n) { return n.kind === 'tree'; }).length;
+    const rockCount = WORLD.nodes.filter(function(n) { return n.kind === 'stone'; }).length;
+    check('every tree and rock is harvestable', treeCount >= 100 && rockCount >= 25);
+    // chop a tree that no hostile is camping next to
+    const pine = WORLD.nodes.filter(function(n) {
+      return n.kind === 'tree' && GAME.npcs.every(function(h) {
+        return !h.hostile || Math.hypot(h.pos.x - n.x, h.pos.z - n.z) > 25;
+      });
+    })[0];
     p.pos.x = pine.x; p.pos.z = pine.z + 1.8;
     p.pos.y = terrainH(p.pos.x, p.pos.z);
     p.yaw = Math.atan2(pine.x - p.pos.x, pine.z - p.pos.z);
     let g2 = 0;
     while (pine.alive && g2++ < 8) { playerSwing(); sim(1); }
-    check('dry pine chopped for wood', !pine.alive && (p.items['Wood'] || 0) >= 3);
+    check('tree chopped for wood', !pine.alive && (p.items['Wood'] || 0) >= 3);
     pine.respawnT = 0.5;
     sim(1);
     check('nodes respawn', pine.alive && pine.hits === pine.maxHits);
@@ -248,6 +256,20 @@ if (window.location.search.indexOf('autotest') >= 0) {
     p.hp = p.maxhp;
     sim(6);
     check('bandit aggroes and damages the player', p.hp < p.maxhp);
+
+    // 10b. the rich vein is guarded by something far worse
+    const vein2 = WORLD.nodes.filter(function(n) { return n.kind === 'ore'; })[1];
+    const beasts = GAME.npcs.filter(function(n) { return n.kind === 'shadowbeast'; });
+    check('shadowbeasts guard the rich vein', beasts.length === 2 && vein2.mult === 2
+          && beasts.every(function(b) {
+               return Math.hypot(b.pos.x - vein2.x, b.pos.z - vein2.z) < 18;
+             }));
+    p.pos.x = vein2.x; p.pos.z = vein2.z;
+    p.pos.y = terrainH(p.pos.x, p.pos.z);
+    p.hp = p.maxhp; // an underleveled digger stands no chance here
+    sim(12);
+    check('shadowbeasts kill the underleveled', p.hp === 0 && GAME.uiOpen === 'death');
+    respawn();
 
     // 11. clock advances
     const todBefore = GAME.timeOfDay;

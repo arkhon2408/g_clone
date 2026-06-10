@@ -121,6 +121,15 @@ function initGame() {
              hostile: true, damageable: true, wanderR: 7, xp: 45, respawn: 90 });
   }
 
+  // shadowbeasts at the rich vein by the old mine — bring the Ore blade,
+  // level 5 and a pocketful of potions, or don't come at all
+  const sbSpots = [[6, -108], [14, -115]];
+  for (const s of sbSpots) {
+    addHostile({ name: 'Shadowbeast', kind: 'shadowbeast', x: s[0], z: s[1],
+             hp: 300, dmg: 36, speed: 5.4, aggroR: 14, attackR: 2.2, leashR: 26, atkRate: 1.0,
+             hostile: true, damageable: true, wanderR: 6, xp: 200, respawn: 180 });
+  }
+
   loadProgress();
 }
 
@@ -216,6 +225,10 @@ function creditKill(n) {
   } else if (n.kind === 'wolf') {
     GAME.player.items['Wolf meat'] = (GAME.player.items['Wolf meat'] || 0) + 1;
     uiMsg('Taken: Wolf meat');
+  } else if (n.kind === 'shadowbeast') {
+    const loot = 35 + Math.floor(Math.random() * 16);
+    GAME.player.ore += loot;
+    uiMsg('Taken: ' + loot + ' ore nuggets');
   } else {
     const loot = 5 + Math.floor(Math.random() * 10);
     GAME.player.ore += loot;
@@ -264,7 +277,7 @@ function applyPlayerHit() {
 
 const NODE_TOOLS = { tree: 'Woodcutter\'s axe', stone: 'Pickaxe', ore: 'Pickaxe' };
 const NODE_YIELD = { tree: 'Wood', stone: 'Stone', ore: 'Raw ore' };
-const NODE_LABEL = { tree: 'dry pine', stone: 'stone block', ore: 'ore vein' };
+const NODE_LABEL = { tree: 'tree', stone: 'rock', ore: 'ore vein' };
 
 function nearestNode(maxD) {
   const p = GAME.player;
@@ -295,8 +308,8 @@ function tryHitNode() {
     nd.hits--;
     nd.shakeT = 0.3;
     const res = NODE_YIELD[nd.kind];
-    p.items[res] = (p.items[res] || 0) + 1;
-    uiMsg('Gathered: ' + res + ' (' + p.items[res] + ')');
+    p.items[res] = (p.items[res] || 0) + nd.mult;
+    uiMsg('Gathered: ' + (nd.mult > 1 ? nd.mult + ' × ' : '') + res + ' (' + p.items[res] + ')');
     if (nd.hits <= 0) {
       nd.alive = false;
       nd.respawnT = nd.respawn;
