@@ -8,6 +8,8 @@ const WORLD = {
   waterMesh: null,
   colliders: [],   // {x, z, r}
   fires: [],       // {x, y, z, big}
+  nodes: [],       // gather nodes: dry pines, stone blocks, the ore vein
+  nodeMeshes: {},
   size: 160,
   waterLevel: 1.2,
   barrierR: 150,
@@ -251,6 +253,40 @@ function buildWorld() {
     WORLD.colliders.push({ x: rs[0], z: rs[1], r: rs[2] / 2 + 0.2 });
   }
 
+  // ---- gather nodes (dynamic meshes drawn per frame so they can vanish) ----
+  function nodeMesh(builder) {
+    const gn = { v: [] };
+    builder(gn);
+    return new Mesh(gn.v);
+  }
+  WORLD.nodeMeshes.tree = nodeMesh(function(gn) {
+    addCylinder(gn, 0, -0.4, 0, 0.30, 4.8, 5, [0.32, 0.23, 0.14]);
+    addBox(gn, 0.65, 3.0, 0.15, 1.7, 0.14, 0.14, [0.27, 0.19, 0.12], 0.5);
+    addBox(gn, -0.55, 3.7, -0.2, 1.4, 0.12, 0.12, [0.29, 0.21, 0.13], 2.3);
+    addBox(gn, 0.2, 2.2, -0.5, 1.2, 0.12, 0.12, [0.27, 0.19, 0.12], 4.1);
+  });
+  WORLD.nodeMeshes.stone = nodeMesh(function(gn) {
+    addBox(gn, 0, 0.55, 0, 1.6, 1.2, 1.3, [0.56, 0.54, 0.51], 0.5);
+    addBox(gn, 0.55, 0.32, 0.4, 1.0, 0.7, 0.9, [0.62, 0.60, 0.56], 1.4);
+    addBox(gn, -0.5, 0.27, -0.35, 0.8, 0.6, 0.7, [0.51, 0.49, 0.47], 2.6);
+  });
+  WORLD.nodeMeshes.ore = nodeMesh(function(gn) {
+    addBox(gn, 0, 0.5, 0, 1.8, 1.1, 1.5, [0.20, 0.17, 0.18], 0.7);
+    // magic ore burns from within — bright even at night
+    addBox(gn, 0.2, 1.15, 0.1, 0.36, 0.95, 0.36, [1.0, 0.28, 0.14], 0.4);
+    addBox(gn, -0.42, 0.95, -0.2, 0.28, 0.72, 0.28, [0.95, 0.32, 0.10], 1.5);
+    addBox(gn, 0.5, 0.85, -0.42, 0.22, 0.55, 0.22, [1.0, 0.42, 0.16], 2.3);
+  });
+  function addNode(kind, x, z, respawn, hits) {
+    WORLD.nodes.push({ kind: kind, x: x, z: z, y: terrainH(x, z),
+                       yaw: hash2(Math.round(x), Math.round(z)) * 6.28,
+                       r: kind === 'tree' ? 0.5 : 0.9, hits: hits, maxHits: hits,
+                       alive: true, respawnT: 0, respawn: respawn, shakeT: 0 });
+  }
+  for (const s of [[46, 64], [56, 50], [40, 84], [-46, 70], [-40, 90]]) addNode('tree', s[0], s[1], 90, 3);
+  for (const s of [[24, 60], [-28, 52], [60, 36]]) addNode('stone', s[0], s[1], 75, 3);
+  addNode('ore', -46, -86, 150, 4); // the one ore vein — wolf country
+
   // ---- forest ----
   let placed = 0;
   for (let tries = 0; tries < 900 && placed < 170; tries++) {
@@ -263,6 +299,7 @@ function buildWorld() {
     if (Math.hypot(x - 58, z + 71) < 13) continue;      // ruin
     if (Math.hypot(x - 26, z - 98) < 10) continue;      // molerat ground
     if (Math.hypot(x, z + 120) < 14) continue;          // mine
+    if (WORLD.nodes.some(function(nd) { return Math.hypot(x - nd.x, z - nd.z) < 4; })) continue;
     if (terrainH(x, z) < WORLD.waterLevel + 0.5) continue;
     if (terrainNormalY(x, z) < 0.75) continue;
     addTree(g, x, z, rng);
@@ -276,6 +313,7 @@ function buildWorld() {
     const r = Math.hypot(x, z);
     if (r < 40) continue;
     if (distToPath(x, z) < 4) continue;
+    if (WORLD.nodes.some(function(nd) { return Math.hypot(x - nd.x, z - nd.z) < 4; })) continue;
     if (terrainH(x, z) < WORLD.waterLevel + 0.4) continue;
     addRock(g, x, z, rng);
   }

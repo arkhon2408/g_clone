@@ -14,7 +14,7 @@ const IS_TOUCH = window.matchMedia('(pointer: coarse)').matches
   || window.location.search.indexOf('touch') >= 0;
 
 // Automated test / screenshot modes: no networking, no saved progress.
-const IS_TEST_MODE = /[?&](autotest|dlgshot|invshot|chrshot)/.test(window.location.search);
+const IS_TEST_MODE = /[?&](autotest|dlgshot|invshot|chrshot|oreshot)/.test(window.location.search);
 
 const VS_WORLD = `#version 300 es
 layout(location=0) in vec3 aPos;
@@ -44,14 +44,14 @@ uniform vec3 uCamPos;
 uniform vec3 uFogCol;
 uniform float uFogDen;
 uniform vec3 uTint;
-uniform vec3 uLightPos[6];
-uniform vec3 uLightCol[6];
+uniform vec3 uLightPos[8];
+uniform vec3 uLightCol[8];
 out vec4 frag;
 void main() {
   vec3 n = normalize(vNorm);
   float dif = max(dot(n, uSunDir), 0.0);
   vec3 light = uAmb + uSunCol * dif;
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < 8; i++) {
     vec3 d = uLightPos[i] - vWorld;
     float dist2 = dot(d, d);
     float att = 1.0 / (1.0 + dist2 * 0.035);

@@ -109,13 +109,19 @@ function initTouch() {
   btn('btnInv', function() { if (GAME.started) toggleInventory(); });
   btn('btnJrn', function() { if (GAME.started) toggleJournal(); });
   btn('btnChr', function() { if (GAME.started) toggleCharacter(); });
+  btn('btnChat', function() {
+    if (!GAME.started) return;
+    if (NET.active) openChat();
+    else uiMsg('Chat needs the shared world — choose Multiplayer on the title screen.');
+  });
 
-  // the talk prompt itself is the talk button on touch
+  // the prompt itself is the action button on touch: accept duel > talk > challenge
   UI.prompt.addEventListener('click', function() {
-    if (GAME.started && !GAME.uiOpen) {
-      const t = nearestTalkable();
-      if (t) openDialog(t);
-    }
+    if (!GAME.started || GAME.uiOpen) return;
+    if (NET.duelReq) { netAcceptDuel(); return; }
+    const t = nearestTalkable();
+    if (t) { openDialog(t); return; }
+    if (NET.active && !NET.duel && !nearestNode(3.5) && nearestRemote(4)) netChallenge();
   });
 
   // release everything when a panel opens (touchend never fires on hidden elements)

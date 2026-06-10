@@ -27,6 +27,11 @@ function startGame(multiplayer) {
 
 function initInput() {
   window.addEventListener('keydown', function(e) {
+    if (GAME.uiOpen === 'chat') { // typing — game hotkeys stay out of it
+      if (e.code === 'Enter' || e.code === 'NumpadEnter') closeChat(true);
+      else if (e.code === 'Escape') closeChat(false);
+      return;
+    }
     INPUT[e.code] = true;
     if (e.code === 'Space') e.preventDefault();
     if (!GAME.started) {
@@ -42,6 +47,14 @@ function initInput() {
       toggleJournal();
     } else if (e.code === 'KeyC') {
       toggleCharacter();
+    } else if (e.code === 'Enter' && !GAME.uiOpen && NET.active) {
+      openChat();
+    } else if (e.code === 'KeyG' && !GAME.uiOpen && NET.active && !NET.duel && !NET.duelReq) {
+      netChallenge();
+    } else if (e.code === 'KeyY' && !GAME.uiOpen && NET.duelReq) {
+      netAcceptDuel();
+    } else if (e.code === 'KeyN' && !GAME.uiOpen && NET.duelReq) {
+      netDeclineDuel();
     } else if (e.code === 'Escape') {
       if (GAME.uiOpen === 'dialog') closeDialog();
       else if (GAME.uiOpen === 'inventory') toggleInventory();
@@ -169,15 +182,26 @@ function render() {
   gl.uniform3fv(PROG.lit.u.uFogCol, sky.fogCol);
   gl.uniform1f(PROG.lit.u.uFogDen, sky.fogDen);
 
-  const lp = new Float32Array(18);
-  const lc = new Float32Array(18);
-  for (let i = 0; i < 6; i++) {
+  // point lights: campfires, then any lit torches (ours first), 8 slots total
+  const torches = [];
+  if (GAME.started && GAME.player.torchLit && GAME.player.hp > 0) torches.push(GAME.player);
+  for (const r of NET.remotes.values()) {
+    if (r.torchLit && r.hp > 0) torches.push(r);
+  }
+  const lp = new Float32Array(24);
+  const lc = new Float32Array(24);
+  let li = 0;
+  for (let i = 0; i < WORLD.fires.length && li < 8; i++, li++) {
     const f = WORLD.fires[i];
-    if (f) {
-      const flicker = 1.9 + Math.sin(worldClock * 11 + i * 2.7) * 0.45 + Math.sin(worldClock * 23 + i) * 0.2;
-      lp[i * 3] = f.x; lp[i * 3 + 1] = f.y + 0.4; lp[i * 3 + 2] = f.z;
-      lc[i * 3] = 1.0 * flicker; lc[i * 3 + 1] = 0.52 * flicker; lc[i * 3 + 2] = 0.18 * flicker;
-    }
+    const flicker = 1.9 + Math.sin(worldClock * 11 + i * 2.7) * 0.45 + Math.sin(worldClock * 23 + i) * 0.2;
+    lp[li * 3] = f.x; lp[li * 3 + 1] = f.y + 0.4; lp[li * 3 + 2] = f.z;
+    lc[li * 3] = 1.0 * flicker; lc[li * 3 + 1] = 0.52 * flicker; lc[li * 3 + 2] = 0.18 * flicker;
+  }
+  for (let i = 0; i < torches.length && li < 8; i++, li++) {
+    const tp = torchWorldPos(torches[i]);
+    const flicker = 1.3 + Math.sin(worldClock * 13 + i * 4.1) * 0.25;
+    lp[li * 3] = tp[0]; lp[li * 3 + 1] = tp[1] + 0.25; lp[li * 3 + 2] = tp[2];
+    lc[li * 3] = 1.0 * flicker; lc[li * 3 + 1] = 0.55 * flicker; lc[li * 3 + 2] = 0.20 * flicker;
   }
   gl.uniform3fv(PROG.lit.u.uLightPos, lp);
   gl.uniform3fv(PROG.lit.u.uLightCol, lc);
@@ -185,6 +209,16 @@ function render() {
   gl.uniformMatrix4fv(PROG.lit.u.uModel, false, M4.ident());
   gl.uniform3f(PROG.lit.u.uTint, 1, 1, 1);
   WORLD.mesh.draw();
+
+  // gather nodes (they shake when struck and vanish when depleted)
+  for (const nd of WORLD.nodes) {
+    if (!nd.alive) continue;
+    const sh = nd.shakeT > 0 ? 1 + Math.sin(worldClock * 55) * 0.05 * nd.shakeT : 1;
+    gl.uniformMatrix4fv(PROG.lit.u.uModel, false,
+      M4.chain(M4.translate(nd.x, nd.y, nd.z), M4.rotY(nd.yaw), M4.scale(sh, sh, sh)));
+    gl.uniform3f(PROG.lit.u.uTint, 1, 1, 1);
+    WORLD.nodeMeshes[nd.kind].draw();
+  }
 
   for (const n of GAME.npcs) drawCharacter(n);
   for (const r of NET.remotes.values()) drawCharacter(r);
@@ -225,6 +259,15 @@ function render() {
     gl.uniformMatrix4fv(PROG.flat.u.uModel, false,
       M4.chain(M4.translate(f.x, f.y - 0.35, f.z), M4.scale(0.45 * s2, 0.8 * s2, 0.45 * s2)));
     gl.uniform3f(PROG.flat.u.uTint, 1.0, 0.75, 0.25);
+    MESH.flame.draw();
+  }
+  // hand-torch flames
+  for (let i = 0; i < torches.length; i++) {
+    const tp = torchWorldPos(torches[i]);
+    const s1 = 0.9 + Math.sin(worldClock * 12 + i * 2.3) * 0.15;
+    gl.uniformMatrix4fv(PROG.flat.u.uModel, false,
+      M4.chain(M4.translate(tp[0], tp[1] - 0.06, tp[2]), M4.scale(0.20 * s1, 0.42 * s1, 0.20 * s1)));
+    gl.uniform3f(PROG.flat.u.uTint, 1.0, 0.55, 0.12);
     MESH.flame.draw();
   }
 

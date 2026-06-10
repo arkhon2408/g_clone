@@ -19,6 +19,8 @@ const NET = {
   lastSend: 0,
   playerCount: 1,
   name: '',
+  duel: null,           // {opp, name} while a duel is on
+  duelReq: null,        // {from, name, t} incoming challenge
 };
 
 function netResolveUrl() {
@@ -106,8 +108,10 @@ function makeRemote(id, name) {
     pos: { x: 0, y: 4, z: 60 },
     tx: 0, tz: 60,
     yaw: 0, tyaw: 0,
-    hp: 100,
+    hp: 100, maxhp: 100,
     hasSword: false,
+    torchLit: false,
+    chatMsg: '', chatT: 0,
     helmet: false,
     anim: { walkPhase: 0, moveAmt: 0, attackT: 0, deadT: 0, flash: 0 },
     colors: { skin: SKIN, torso: pal, legs: [pal[0] * 0.6, pal[1] * 0.6, pal[2] * 0.6],
@@ -204,6 +208,49 @@ function netHandle(m) {
     }
   } else if (m.t === 'phit') {
     damagePlayer(m.dmg, m.by);
+  } else if (m.t === 'chat') {
+    if (m.id === NET.id) {
+      uiMsg('You: ' + m.msg);
+    } else {
+      const r = NET.remotes.get(m.id);
+      if (r) { r.chatMsg = m.msg; r.chatT = 6; }
+      uiMsg((m.name || 'Stranger') + ': ' + m.msg);
+    }
+  } else if (m.t === 'duelreq') {
+    NET.duelReq = { from: m.from, name: m.name, t: 15 };
+    uiMsg(m.name + ' challenges you to a duel! [Y] accept · [N] decline');
+  } else if (m.t === 'duelstart') {
+    NET.duel = { opp: m.opp, name: m.name };
+    NET.duelReq = null;
+    uiMsg('Duel with ' + m.name + '! The loser forfeits half their ore. No one dies here.');
+  } else if (m.t === 'dhit') {
+    const p = GAME.player;
+    p.hp = Math.max(1, p.hp - m.dmg); // duels never kill
+    p.hurtFlash = 1;
+    GAME.focusT = 6;
+  } else if (m.t === 'duelend') {
+    if (m.loser === NET.id) {
+      const p = GAME.player;
+      const lost = Math.floor(p.ore / 2);
+      p.ore -= lost;
+      p.hp = Math.max(p.hp, Math.ceil(p.maxhp * 0.35));
+      NET.ws.send(JSON.stringify({ t: 'duelore', to: m.winner, ore: lost }));
+      uiMsg('You yield the duel to ' + m.wname + ' — and ' + lost + ' ore with it.');
+      uiMsg('The vein and the pines pay too. Whistler buys what you gather.');
+      NET.duel = null;
+    } else if (m.winner === NET.id) {
+      uiMsg('You won the duel against ' + m.lname + '!');
+      NET.duel = null;
+    } else {
+      uiMsg(m.wname + ' defeated ' + m.lname + ' in a duel.');
+    }
+  } else if (m.t === 'duelwin') {
+    GAME.player.ore += m.ore;
+    uiMsg('Spoils of the duel: ' + m.ore + ' ore nuggets.');
+  } else if (m.t === 'duelcancel') {
+    if (NET.duel) uiMsg('The duel is off — ' + (m.why || 'your opponent is gone') + '.');
+    NET.duel = null;
+    NET.duelReq = null;
   } else if (m.t === 'time') {
     GAME.timeOfDay = m.tod;
     GAME.day = m.day;
@@ -217,6 +264,8 @@ function netApplyState(r, s) {
   r.hp = s[5];
   r.anim.deadT = r.hp <= 0 ? Math.max(r.anim.deadT, 0.01) : 0;
   r.hasSword = !!s[6];
+  r.maxhp = 100 + (Math.max(1, s[7] | 0) - 1) * 20;
+  r.torchLit = !!s[8];
 }
 
 // ---- per-frame work (runs even while menus are open — the world goes on) --------
@@ -238,6 +287,20 @@ function netUpdate(dt) {
     if (r.anim.attackT > 0) { r.anim.attackT += dt / 0.45; if (r.anim.attackT >= 1) r.anim.attackT = 0; }
     if (r.anim.deadT > 0 && r.hp <= 0) r.anim.deadT = Math.min(r.anim.deadT + dt * 2.2, 1);
     if (r.anim.flash > 0) r.anim.flash -= dt * 3;
+    if (r.chatT > 0) r.chatT -= dt;
+  }
+
+  // a pending challenge expires; an active duel keeps the opponent in focus
+  if (NET.duelReq) {
+    NET.duelReq.t -= dt;
+    if (NET.duelReq.t <= 0) NET.duelReq = null;
+  }
+  if (NET.duel) {
+    const o = NET.remotes.get(NET.duel.opp);
+    if (o) {
+      GAME.focusEnemy = o;
+      GAME.focusT = Math.max(GAME.focusT, 1);
+    }
   }
 
   // interpolate server-driven hostiles
@@ -267,6 +330,7 @@ function netUpdate(dt) {
     NET.ws.send(JSON.stringify({
       t: 's', x: p.pos.x, z: p.pos.z, yaw: p.yaw, m: p.anim.moveAmt,
       a: p.attackT > 0 ? 1 : 0, hp: p.hp, sw: p.hasSword ? 1 : 0, lv: p.level,
+      tc: p.torchLit ? 1 : 0,
     }));
   }
 }
@@ -275,8 +339,67 @@ function netSendSwing() {
   const p = GAME.player;
   NET.ws.send(JSON.stringify({
     t: 'swing', x: p.pos.x, z: p.pos.z, yaw: p.yaw,
-    sw: p.hasSword ? 1 : 0, lv: p.level,
+    sw: p.hasSword ? 1 : 0, lv: p.level, wd: p.weaponDmg,
   }));
+}
+
+// ---- duels --------------------------------------------------------------------
+
+function nearestRemote(maxD) {
+  const p = GAME.player;
+  let best = null, bestD = maxD;
+  for (const r of NET.remotes.values()) {
+    if (r.hp <= 0) continue;
+    const d = Math.hypot(r.pos.x - p.pos.x, r.pos.z - p.pos.z);
+    if (d < bestD) { bestD = d; best = r; }
+  }
+  return best;
+}
+
+function netChallenge() {
+  const r = nearestRemote(4);
+  if (!r) {
+    uiMsg('No one close enough to challenge — stand next to another player.');
+    return;
+  }
+  NET.ws.send(JSON.stringify({ t: 'duel', to: r.id }));
+  uiMsg('You challenge ' + r.name + ' to a duel...');
+}
+
+function netAcceptDuel() {
+  if (!NET.duelReq) return;
+  NET.ws.send(JSON.stringify({ t: 'duelok', to: NET.duelReq.from }));
+  NET.duelReq = null;
+}
+
+function netDeclineDuel() {
+  if (!NET.duelReq) return;
+  uiMsg('You decline ' + NET.duelReq.name + '\'s challenge.');
+  NET.duelReq = null;
+}
+
+// ---- chat ---------------------------------------------------------------------
+
+function openChat() {
+  if (!NET.active || GAME.uiOpen) return;
+  GAME.uiOpen = 'chat';
+  document.exitPointerLock();
+  document.getElementById('chatWrap').style.display = 'block';
+  const inp = document.getElementById('chatInput');
+  inp.value = '';
+  inp.focus();
+}
+
+function closeChat(sendIt) {
+  const inp = document.getElementById('chatInput');
+  if (sendIt) {
+    const txt = inp.value.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (txt && NET.active) NET.ws.send(JSON.stringify({ t: 'chat', msg: txt }));
+  }
+  inp.blur();
+  document.getElementById('chatWrap').style.display = 'none';
+  if (GAME.uiOpen === 'chat') GAME.uiOpen = null;
+  lockPointer();
 }
 
 // ---- name tags --------------------------------------------------------------------
@@ -299,8 +422,10 @@ function netDrawNameTags(proj, view) {
     const cy = (pv[1] * x + pv[5] * y + pv[9] * z + pv[13]) / cw;
     const sx = (cx * 0.5 + 0.5) * 100;
     const sy = (-cy * 0.5 + 0.5) * 100;
+    const bubble = (r.chatT > 0 && r.chatMsg)
+      ? '<div class="chatbubble">' + escapeHtml(r.chatMsg) + '</div>' : '';
     html += '<div class="nametag" style="left:' + sx.toFixed(2) + '%;top:' + sy.toFixed(2)
-          + '%">' + escapeHtml(r.name) + '</div>';
+          + '%">' + bubble + escapeHtml(r.name) + '</div>';
   }
   cont.innerHTML = html;
 }
@@ -317,7 +442,9 @@ function saveProgress() {
   localStorage.setItem('gothic_save', JSON.stringify({
     level: p.level, xp: p.xp, hp: p.hp, maxhp: p.maxhp, ore: p.ore,
     items: p.items, hasSword: p.hasSword, weaponName: p.weaponName,
-    weaponDmg: p.weaponDmg, quest: GAME.quest, kills: GAME.kills, day: GAME.day,
+    weaponDmg: p.weaponDmg, torchLit: p.torchLit,
+    quest: GAME.quest, kills: GAME.kills, day: GAME.day,
+    merchant: { stock: MERCHANT.stock, smelted: MERCHANT.smelted },
   }));
 }
 
@@ -335,6 +462,15 @@ function loadProgress() {
   p.hp = Math.max(s.hp, Math.floor(s.maxhp * 0.5));
   p.ore = s.ore; p.items = s.items;
   p.hasSword = s.hasSword; p.weaponName = s.weaponName; p.weaponDmg = s.weaponDmg;
+  p.torchLit = !!(s.torchLit && p.items['Torch']);
+  // saves from before weapons lived in the inventory: grant the equipped one
+  if (p.weaponName !== 'Fists' && !p.items[p.weaponName]) p.items[p.weaponName] = 1;
+  if (s.merchant) {
+    for (const k in s.merchant.stock) {
+      if (MERCHANT.stock[k] !== undefined) MERCHANT.stock[k] = s.merchant.stock[k];
+    }
+    MERCHANT.smelted = s.merchant.smelted || 0;
+  }
   GAME.quest = s.quest;
   GAME.kills = s.kills;
   GAME.day = s.day || 1;

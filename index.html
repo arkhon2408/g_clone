@@ -41,7 +41,21 @@
   .nametag {
     position: absolute; transform: translate(-50%, -100%); font-size: 13px;
     color: #cfe0b8; text-shadow: 1px 1px 2px #000, 0 0 6px rgba(0,0,0,0.8);
-    white-space: nowrap;
+    white-space: nowrap; text-align: center;
+  }
+  .chatbubble {
+    display: block; max-width: 240px; white-space: normal; margin-bottom: 3px;
+    background: rgba(16,12,7,0.85); border: 1px solid #6b5a36; padding: 4px 9px;
+    font-size: 13px; color: #e8dcb8;
+  }
+
+  #chatWrap {
+    position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%);
+    width: min(520px, 90vw); display: none; z-index: 6;
+  }
+  #chatInput {
+    width: 100%; padding: 9px 12px; font: 15px Georgia, serif; color: #e8dcb8;
+    background: rgba(16,12,7,0.92); border: 2px solid #6b5a36; outline: none;
   }
 
   #prompt {
@@ -168,6 +182,7 @@
   #btnInv    { right: 36px; bottom: 148px; width: 50px; height: 50px; font-size: 17px; }
   #btnJrn    { right: 102px; bottom: 158px; width: 50px; height: 50px; font-size: 17px; }
   #btnChr    { right: 166px; bottom: 142px; width: 50px; height: 50px; font-size: 17px; }
+  #btnChat   { right: 230px; bottom: 126px; width: 50px; height: 50px; font-size: 19px; }
   body.touch #joystick { display: block; }
   body.touch .tbtn { display: flex; }
   body.touch #crosshair, body.touch #pauseHint { display: none !important; }
@@ -253,9 +268,13 @@
   </div>
   <div id="titleControls">
     WASD move &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; Shift walk &nbsp;·&nbsp; Space jump<br>
-    Left click attack &nbsp;·&nbsp; E talk &nbsp;·&nbsp; I inventory &nbsp;·&nbsp; J journal &nbsp;·&nbsp; C character
+    Left click attack &nbsp;·&nbsp; E talk &nbsp;·&nbsp; I inventory &nbsp;·&nbsp; J journal &nbsp;·&nbsp; C character<br>
+    Multiplayer: Enter chat &nbsp;·&nbsp; G duel a player &nbsp;·&nbsp; Y / N answer a challenge
   </div>
 </div>
+
+<div id="chatWrap"><input id="chatInput" maxlength="120" autocomplete="off"
+     placeholder="Say something... (Enter to send, Esc to cancel)"></div>
 
 <div id="joystick"><div id="joyKnob"></div></div>
 <div id="btnAttack" class="tbtn">⚔</div>
@@ -263,6 +282,7 @@
 <div id="btnInv" class="tbtn">I</div>
 <div id="btnJrn" class="tbtn">J</div>
 <div id="btnChr" class="tbtn">C</div>
+<div id="btnChat" class="tbtn">💬</div>
 
 <div id="errbox"></div>
 <script>

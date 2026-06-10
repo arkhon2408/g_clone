@@ -88,10 +88,30 @@ function updateHUD() {
     UI.enemybar.style.display = 'none';
   }
 
-  // interaction prompt
+  // interaction prompt: duel challenge > talk > gather node > offer a duel
   if (GAME.started && !GAME.uiOpen) {
+    let txt = '';
     const t = nearestTalkable();
-    UI.prompt.textContent = t ? (IS_TOUCH ? 'Talk to ' + t.name : '[E]  Talk to ' + t.name) : '';
+    if (NET.duelReq) {
+      txt = IS_TOUCH ? 'Tap to accept ' + NET.duelReq.name + '\'s duel ('
+              + Math.ceil(NET.duelReq.t) + 's)'
+            : '[Y]  Accept ' + NET.duelReq.name + '\'s duel · [N] decline ('
+              + Math.ceil(NET.duelReq.t) + 's)';
+    } else if (t) {
+      txt = IS_TOUCH ? 'Talk to ' + t.name : '[E]  Talk to ' + t.name;
+    } else {
+      const nd = nearestNode(3.5);
+      if (nd) {
+        const tool = NODE_TOOLS[nd.kind];
+        txt = GAME.player.items[tool]
+          ? 'Swing to work the ' + NODE_LABEL[nd.kind]
+          : 'The ' + NODE_LABEL[nd.kind] + ' needs a ' + tool.toLowerCase();
+      } else if (NET.active && !NET.duel) {
+        const r = nearestRemote(4);
+        if (r) txt = IS_TOUCH ? 'Tap to duel ' + r.name : '[G]  Challenge ' + r.name + ' to a duel';
+      }
+    }
+    UI.prompt.textContent = txt;
   } else {
     UI.prompt.textContent = '';
   }
@@ -156,7 +176,7 @@ function toggleInventory() {
 function renderInventory() {
   const p = GAME.player;
   UI.invList.innerHTML = '';
-  function row(label, sub, onUse) {
+  function row(label, sub, btnText, onUse) {
     const div = document.createElement('div');
     div.className = 'invRow';
     const main = document.createElement('div');
@@ -169,18 +189,33 @@ function renderInventory() {
     if (onUse) {
       const btn = document.createElement('div');
       btn.className = 'invUse';
-      btn.textContent = 'Eat';
+      btn.textContent = btnText;
       btn.addEventListener('click', onUse);
       div.appendChild(btn);
     }
     UI.invList.appendChild(div);
   }
-  row(p.weaponName, p.hasSword ? 'Weapon — damage ' + p.weaponDmg : 'Bare hands — damage ' + p.weaponDmg, null);
-  row(p.ore + ' × Ore nugget', 'The only currency that matters in the Colony.', null);
+  row(p.weaponName, p.hasSword ? 'Equipped weapon — damage ' + p.weaponDmg
+      : 'Bare hands — damage ' + p.weaponDmg,
+      p.weaponName === 'Fists' ? null : 'Unequip',
+      p.weaponName === 'Fists' ? null : function() { equipWeapon('Fists'); });
+  row(p.ore + ' × Ore nugget', 'The only currency that matters in the Colony.', null, null);
   for (const name in p.items) {
     if (p.items[name] > 0) {
-      row(p.items[name] + ' × ' + name, ITEM_DEFS[name].desc + ' (+' + ITEM_DEFS[name].heal + ' HP)',
-          function(n) { return function() { eatItem(n); }; }(name));
+      const def = ITEM_DEFS[name];
+      if (def.heal) {
+        row(p.items[name] + ' × ' + name, def.desc + ' (+' + def.heal + ' HP)',
+            def.verb || 'Eat', function(n) { return function() { eatItem(n); }; }(name));
+      } else if (def.dmg) {
+        const equipped = p.weaponName === name;
+        row(name, def.desc + ' (damage ' + def.dmg + ')',
+            equipped ? null : 'Equip',
+            equipped ? null : function(n) { return function() { equipWeapon(n); }; }(name));
+      } else if (name === 'Torch') {
+        row('Torch', def.desc, p.torchLit ? 'Snuff' : 'Light', toggleTorch);
+      } else {
+        row(p.items[name] + ' × ' + name, def.desc, null, null);
+      }
     }
   }
 }

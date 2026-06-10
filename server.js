@@ -7,13 +7,16 @@
 //
 //   node server.js            (port 8080, or $PORT when set by the host)
 //
-// The server owns: time of day, hostile NPCs (molerats + bandits) including
-// their AI, deaths and respawns, and relays player states. Friendly camp NPCs
-// are cosmetic and stay client-side. There is no PvP code path at all, so
-// players cannot hurt players. World time is saved to world.json periodically.
+// The server owns: time of day, hostile NPCs (molerats, bandits, wolves)
+// including their AI, deaths and respawns, relays player states and chat, and
+// referees duels — the only way players can hurt players, and it never kills:
+// at 10 HP the duel ends and the loser forfeits half their ore to the winner.
+// World time is saved to world.json periodically; set GITHUB_TOKEN + GIST_ID
+// to also back it up to a GitHub Gist (free hosts wipe the disk on restart).
 // ---------------------------------------------------------------------------
 
 const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const fs = require('fs');
 
@@ -21,6 +24,8 @@ const PORT = process.env.PORT || 8080;
 const SAVE_FILE = 'world.json';
 const TICK = 0.1;          // 10 simulation ticks per second
 const DAY_LENGTH = 480;    // seconds per in-game day (matches the client)
+const GIST_ID = process.env.GIST_ID || '';
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 
 // ---- websocket plumbing -----------------------------------------------------
 
@@ -89,10 +94,11 @@ function parseFrames(c) {
 
 // ---- world state -------------------------------------------------------------
 
-// Hostile roster. Spawn positions MUST match js/game.js (mrSpots / bSpots) —
-// clients map these to their local NPCs by array order.
+// Hostile roster. Spawn positions MUST match js/game.js (mrSpots / bSpots /
+// wSpots) — clients map these to their local NPCs by array order.
 const MR_SPOTS = [[22, 92], [30, 100], [26, 106], [34, 92], [18, 102], [38, 104], [28, 86]];
 const B_SPOTS = [[58, -66], [63, -70], [55, -71]];
+const W_SPOTS = [[-42, -82], [-51, -90], [-44, -93]]; // wolves around the ore vein
 
 const npcs = [];
 for (const s of MR_SPOTS) {
@@ -102,6 +108,10 @@ for (const s of MR_SPOTS) {
 for (const s of B_SPOTS) {
   npcs.push({ tpl: 'bandit', x: s[0], z: s[1], maxhp: 70, dmg: 11, speed: 4.6,
               aggroR: 13, attackR: 2.1, leashR: 30, atkRate: 1.5, respawn: 120 });
+}
+for (const s of W_SPOTS) {
+  npcs.push({ tpl: 'wolf', x: s[0], z: s[1], maxhp: 55, dmg: 12, speed: 5.2,
+              aggroR: 12, attackR: 1.9, leashR: 24, atkRate: 1.1, respawn: 90 });
 }
 npcs.forEach(function(n, i) {
   n.id = i;
@@ -123,6 +133,59 @@ if (fs.existsSync(SAVE_FILE)) {
   world.timeOfDay = saved.timeOfDay;
   world.day = saved.day;
   console.log('Restored world: day ' + world.day);
+} else if (GIST_ID) {
+  // fresh disk (free hosts wipe it on every deploy) — restore from the gist
+  gistFetch(function(saved) {
+    if (saved && saved.day >= world.day) {
+      world.timeOfDay = saved.timeOfDay;
+      world.day = saved.day;
+      console.log('Restored world from gist: day ' + world.day);
+    }
+  });
+}
+
+// ---- gist backup (zero-dep; survives free-tier disk wipes) ---------------------
+
+function gistRequest(method, body, cb) {
+  const headers = {
+    'User-Agent': 'gothic-world-server',
+    'Accept': 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+  };
+  if (GITHUB_TOKEN) headers['Authorization'] = 'Bearer ' + GITHUB_TOKEN;
+  const req = https.request({
+    hostname: 'api.github.com',
+    path: '/gists/' + GIST_ID,
+    method: method,
+    headers: headers,
+  }, function(res) {
+    let data = '';
+    res.on('data', function(ch) { data += ch; });
+    res.on('end', function() { cb(res.statusCode, data); });
+  });
+  req.on('error', function(e) { console.log('gist ' + method + ' failed: ' + e.message); });
+  if (body) req.write(body);
+  req.end();
+}
+
+function gistFetch(cb) {
+  gistRequest('GET', null, function(status, data) {
+    if (status !== 200) { console.log('gist fetch: HTTP ' + status); cb(null); return; }
+    const g = JSON.parse(data);
+    const f = g.files && g.files[SAVE_FILE];
+    cb(f && f.content ? JSON.parse(f.content) : null);
+  });
+}
+
+let lastGistDay = 0;
+function gistBackup() {
+  if (!GIST_ID || !GITHUB_TOKEN || world.day === lastGistDay) return;
+  lastGistDay = world.day;
+  const files = {};
+  files[SAVE_FILE] = { content: JSON.stringify({ timeOfDay: world.timeOfDay, day: world.day }) };
+  gistRequest('PATCH', JSON.stringify({ files: files }), function(status) {
+    if (status !== 200) console.log('gist backup: HTTP ' + status);
+  });
 }
 
 const clients = new Map(); // id -> client
@@ -172,19 +235,20 @@ function handleMessage(c, raw) {
     console.log('+ ' + c.name + ' (#' + c.id + ') — ' + clients.size + ' online');
   } else if (m.t === 's') {
     c.state = [r2(m.x), r2(m.z), r2(m.yaw), r2(m.m), m.a ? 1 : 0, Math.round(m.hp),
-               m.sw ? 1 : 0, m.lv | 0];
+               m.sw ? 1 : 0, m.lv | 0, m.tc ? 1 : 0];
     c.lastSeen = now;
   } else if (m.t === 'swing') {
-    // server-authoritative hit detection against hostiles only — no PvP
+    // server-authoritative hit detection. Base damage comes from the client's
+    // equipped weapon, clamped to what the shop can actually sell.
     const fx = Math.sin(m.yaw), fz = Math.cos(m.yaw);
-    const base = m.sw ? 18 : 6;
+    const base = m.wd ? Math.max(6, Math.min(40, m.wd | 0)) : (m.sw ? 18 : 6);
+    const dmg = base + Math.max(0, (m.lv | 0) - 1) * 3 + Math.floor(Math.random() * 4);
     for (const n of npcs) {
       if (n.state === 'dead') continue;
       const dx = n.x - m.x, dz = n.z - m.z;
       const d = Math.hypot(dx, dz);
       if (d > 2.6) continue;
       if ((dx * fx + dz * fz) / (d || 1) < 0.3) continue;
-      const dmg = base + Math.max(0, (m.lv | 0) - 1) * 3 + Math.floor(Math.random() * 4);
       n.hp -= dmg;
       if (n.state === 'idle' || n.state === 'wander') n.state = 'chase';
       if (n.hp <= 0) {
@@ -197,10 +261,64 @@ function handleMessage(c, raw) {
         broadcast({ t: 'nhit', id: n.id, hp: n.hp, by: c.id });
       }
     }
+    // duels are the one way players can hurt players — and they never kill
+    if (c.duelWith) {
+      const o = clients.get(c.duelWith);
+      if (o && o.ready && o.state[5] > 0) {
+        const dx = o.state[0] - m.x, dz = o.state[1] - m.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 3.0 && (dx * fx + dz * fz) / (d || 1) > 0.25) {
+          send(o, { t: 'dhit', dmg: dmg, by: c.name });
+        }
+      }
+    }
+  } else if (m.t === 'chat') {
+    const txt = String(m.msg || '').slice(0, 120);
+    if (txt && now - (c.lastChat || 0) > 0.8) {
+      c.lastChat = now;
+      broadcast({ t: 'chat', id: c.id, name: c.name, msg: txt });
+    }
+  } else if (m.t === 'duel') {
+    const o = clients.get(m.to | 0);
+    if (o && o.ready && o.id !== c.id && !c.duelWith && !o.duelWith) {
+      const d = Math.hypot(c.state[0] - o.state[0], c.state[1] - o.state[1]);
+      if (d < 8) {
+        o.pendingDuelFrom = c.id;
+        o.pendingDuelT = now + 20;
+        send(o, { t: 'duelreq', from: c.id, name: c.name });
+      }
+    }
+  } else if (m.t === 'duelok') {
+    const a = clients.get(m.to | 0); // the challenger
+    if (a && a.ready && c.pendingDuelFrom === a.id && now < c.pendingDuelT
+        && !a.duelWith && !c.duelWith) {
+      c.pendingDuelFrom = null;
+      a.duelWith = c.id;
+      c.duelWith = a.id;
+      send(a, { t: 'duelstart', opp: c.id, name: c.name });
+      send(c, { t: 'duelstart', opp: a.id, name: a.name });
+      console.log('duel: ' + a.name + ' vs ' + c.name);
+    }
+  } else if (m.t === 'duelore') {
+    // the loser hands over half their ore; forward it to the winner
+    const w = clients.get(m.to | 0);
+    const amt = Math.max(0, m.ore | 0);
+    if (w && w.ready && c.lastDuelWinner === w.id) {
+      c.lastDuelWinner = null;
+      send(w, { t: 'duelwin', ore: amt });
+    }
   }
 }
 
 function dropClient(c, reason) {
+  if (c.duelWith) { // walking out on a duel calls it off
+    const o = clients.get(c.duelWith);
+    c.duelWith = null;
+    if (o && o.duelWith === c.id) {
+      o.duelWith = null;
+      send(o, { t: 'duelcancel', why: c.name + ' left the world' });
+    }
+  }
   if (clients.delete(c.id) && c.ready) {
     broadcast({ t: 'leave', id: c.id, name: c.name });
     console.log('- ' + c.name + ' (#' + c.id + ', ' + reason + ') — ' + clients.size + ' online');
@@ -230,7 +348,9 @@ server.on('upgrade', function(req, sock) {
            + 'Upgrade: websocket\r\nConnection: Upgrade\r\n'
            + 'Sec-WebSocket-Accept: ' + acceptKey(key) + '\r\n\r\n');
   const c = { id: nextId++, sock: sock, buf: Buffer.alloc(0), ready: false,
-              name: '', state: [0, 60, 0, 0, 0, 100, 0, 1], lastSeen: now };
+              name: '', state: [0, 60, 0, 0, 0, 100, 0, 1, 0], lastSeen: now,
+              duelWith: null, pendingDuelFrom: null, pendingDuelT: 0,
+              lastDuelWinner: null, lastChat: 0 };
   clients.set(c.id, c);
   sock.on('data', function(data) {
     c.buf = Buffer.concat([c.buf, data]);
@@ -360,6 +480,32 @@ setInterval(function() {
   }
   if (moved.length) broadcast({ t: 'n', l: moved });
 
+  // referee the duels: expired challenges, runaways, and the 10-HP yield point
+  for (const c of clients.values()) {
+    if (!c.ready) continue;
+    if (c.pendingDuelFrom && now > c.pendingDuelT) c.pendingDuelFrom = null;
+    if (!c.duelWith || c.id > c.duelWith) continue; // handle each pair once
+    const o = clients.get(c.duelWith);
+    if (!o || !o.ready) continue; // dropClient cleans broken pairs
+    const dist = Math.hypot(c.state[0] - o.state[0], c.state[1] - o.state[1]);
+    if (dist > 25) {
+      c.duelWith = null;
+      o.duelWith = null;
+      const msg = { t: 'duelcancel', why: 'you drifted too far apart' };
+      send(c, msg);
+      send(o, msg);
+    } else if (c.state[5] <= 10 || o.state[5] <= 10) {
+      const loser = c.state[5] <= 10 ? c : o;
+      const winner = loser === c ? o : c;
+      c.duelWith = null;
+      o.duelWith = null;
+      loser.lastDuelWinner = winner.id;
+      broadcast({ t: 'duelend', winner: winner.id, loser: loser.id,
+                  wname: winner.name, lname: loser.name });
+      console.log('duel: ' + winner.name + ' defeats ' + loser.name);
+    }
+  }
+
   // broadcast all player states
   const list = [];
   for (const c of clients.values()) {
@@ -373,10 +519,11 @@ setInterval(function() {
   }
 }, TICK * 1000);
 
-// time sync + persistence
+// time sync + persistence (gist backup once per in-game day at most)
 setInterval(function() {
   broadcast({ t: 'time', tod: world.timeOfDay, day: world.day });
   fs.writeFileSync(SAVE_FILE, JSON.stringify({ timeOfDay: world.timeOfDay, day: world.day }));
+  gistBackup();
 }, 10000);
 
 server.listen(PORT, function() {

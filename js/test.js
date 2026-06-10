@@ -28,6 +28,26 @@ if (window.location.search.indexOf('chrshot') >= 0) {
   });
 }
 
+// ?oreshot — start at the ore vein with a lit torch (visual check: node meshes,
+// wolves, torch light)
+if (window.location.search.indexOf('oreshot') >= 0) {
+  window.addEventListener('DOMContentLoaded', function() {
+    startGame();
+    const p = GAME.player;
+    const vein = WORLD.nodes.filter(function(n) { return n.kind === 'ore'; })[0];
+    p.items['Torch'] = 1;
+    p.torchLit = true;
+    p.maxhp = 5000; // the wolves WILL come for the photographer
+    p.hp = 5000;
+    p.pos.x = vein.x + 4.5;
+    p.pos.z = vein.z + 4.5;
+    p.pos.y = terrainH(p.pos.x, p.pos.z);
+    p.yaw = Math.atan2(vein.x - p.pos.x, vein.z - p.pos.z) + 0.35;
+    p.pitch = -0.15;
+    GAME.timeOfDay = 0.93; // night — let the ore and the torch glow
+  });
+}
+
 // ?mpshot — multiplayer visual check: starts the game and delays the window
 // load event (via the server's /wait endpoint) so a headless screenshot is
 // taken only after the websocket session is established.
@@ -118,6 +138,82 @@ if (window.location.search.indexOf('autotest') >= 0) {
     p.ore = 3;
     buyNode.opts[0].fn(); // too poor — must not go negative
     check('cannot buy without ore', p.ore === 3);
+
+    // 6c. tools, the torch, and gathering
+    function opt(node, sub) {
+      return node.opts.filter(function(o) { return o.t.indexOf(sub) >= 0; })[0];
+    }
+    p.ore = 300;
+    const toolsNode = DIALOGS.whistler.tools(null);
+    opt(toolsNode, 'pickaxe').fn();
+    opt(toolsNode, 'woodcutter').fn();
+    opt(toolsNode, 'torch').fn();
+    check('bought pickaxe, axe and torch', p.items['Pickaxe'] === 1
+          && p.items['Woodcutter\'s axe'] === 1 && p.items['Torch'] === 1 && p.ore === 215);
+    opt(DIALOGS.whistler.tools(null), 'pickaxe').fn();
+    check('cannot buy a second pickaxe', p.ore === 215);
+    toggleTorch();
+    check('torch lights', p.torchLit === true);
+    toggleTorch();
+
+    const pine = WORLD.nodes.filter(function(n) { return n.kind === 'tree'; })[0];
+    p.pos.x = pine.x; p.pos.z = pine.z + 1.8;
+    p.pos.y = terrainH(p.pos.x, p.pos.z);
+    p.yaw = Math.atan2(pine.x - p.pos.x, pine.z - p.pos.z);
+    let g2 = 0;
+    while (pine.alive && g2++ < 8) { playerSwing(); sim(1); }
+    check('dry pine chopped for wood', !pine.alive && (p.items['Wood'] || 0) >= 3);
+    pine.respawnT = 0.5;
+    sim(1);
+    check('nodes respawn', pine.alive && pine.hits === pine.maxHits);
+
+    const vein = WORLD.nodes.filter(function(n) { return n.kind === 'ore'; })[0];
+    const wolves = GAME.npcs.filter(function(n) { return n.kind === 'wolf'; });
+    check('wolves guard the ore vein', wolves.length === 3 && wolves.every(function(w) {
+      return Math.hypot(w.pos.x - vein.x, w.pos.z - vein.z) < 18;
+    }));
+    for (const w of wolves) { w.state = 'dead'; w.respawnT = 999; } // clear the way
+    p.pos.x = vein.x; p.pos.z = vein.z + 1.9;
+    p.pos.y = terrainH(p.pos.x, p.pos.z);
+    p.yaw = Math.atan2(vein.x - p.pos.x, vein.z - p.pos.z);
+    g2 = 0;
+    while (vein.alive && g2++ < 10) { playerSwing(); sim(1); }
+    check('ore vein mined', !vein.alive && (p.items['Raw ore'] || 0) >= 4);
+
+    // 6d. selling, the stock cap, and the smelter
+    p.items['Wood'] = 10;
+    MERCHANT.stock['Wood'] = 0;
+    const oreBeforeSell = p.ore;
+    opt(DIALOGS.whistler.sell(null), 'wood').fn();
+    check('sold wood to Whistler', p.items['Wood'] === 0 && MERCHANT.stock['Wood'] === 10
+          && p.ore === oreBeforeSell + 40);
+    p.items['Wood'] = 5;
+    MERCHANT.stock['Wood'] = MERCHANT.cap['Wood'];
+    const oreAtCap = p.ore;
+    opt(DIALOGS.whistler.sell(null), 'wood').fn();
+    check('full stock blocks selling', p.items['Wood'] === 5 && p.ore === oreAtCap);
+    const stockBefore = MERCHANT.stock['Wood'];
+    const smeltBefore = MERCHANT.smelted;
+    updateMerchant(17);
+    check('smelter converts stock to ore', MERCHANT.stock['Wood'] === stockBefore - 2
+          && MERCHANT.smelted > smeltBefore);
+
+    // 6e. potions and weapon upgrades
+    MERCHANT.stock['Health potion'] = 2;
+    p.ore = 100;
+    opt(DIALOGS.whistler.trade(null), 'potion').fn();
+    check('bought a health potion', (p.items['Health potion'] || 0) >= 1 && p.ore === 75);
+    p.hp = 30;
+    eatItem('Health potion');
+    check('potion heals 50', p.hp === 80);
+    p.ore = 400;
+    opt(DIALOGS.whistler.weapons(null), 'ore blade').fn();
+    check('ore blade bought and equipped', p.weaponName === 'Ore blade'
+          && p.weaponDmg === 40 && p.items['Ore blade'] === 1);
+    equipWeapon('Old Camp blade');
+    check('weapons swap from the inventory', p.weaponName === 'Old Camp blade'
+          && p.weaponDmg === 18);
+    equipWeapon('Ore blade');
 
     // 6b. character screen opens and closes
     toggleCharacter();

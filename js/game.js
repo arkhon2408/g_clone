@@ -35,6 +35,7 @@ function makePlayer() {
     items: { 'Dried meat': 1, 'Molerat meat': 0 },
     hasSword: false,
     weaponName: 'Fists', weaponDmg: 6,
+    torchLit: false,
     attackT: 0, attackCd: 0, hitDone: false,
     hurtFlash: 0,
     anim: { walkPhase: 0, moveAmt: 0, attackT: 0, deadT: 0, flash: 0 },
@@ -112,6 +113,14 @@ function initGame() {
              colors: { skin: SKIN, torso: [0.22, 0.18, 0.15], legs: [0.18, 0.15, 0.12], hair: [0.1, 0.08, 0.06] } });
   }
 
+  // wolves guarding the ore vein in the north-west
+  const wSpots = [[-42, -82], [-51, -90], [-44, -93]];
+  for (const s of wSpots) {
+    addHostile({ name: 'Wolf', kind: 'wolf', x: s[0], z: s[1],
+             hp: 55, dmg: 12, speed: 5.2, aggroR: 12, attackR: 1.9, leashR: 24, atkRate: 1.1,
+             hostile: true, damageable: true, wanderR: 7, xp: 45, respawn: 90 });
+  }
+
   loadProgress();
 }
 
@@ -137,6 +146,16 @@ function pushOutOfColliders(p, radius) {
     if (d < min && d > 0.0001) {
       p.x = c.x + dx / d * min;
       p.z = c.z + dz / d * min;
+    }
+  }
+  for (const nd of WORLD.nodes) {
+    if (!nd.alive) continue;
+    const dx = p.x - nd.x, dz = p.z - nd.z;
+    const d = Math.hypot(dx, dz);
+    const min = nd.r + radius;
+    if (d < min && d > 0.0001) {
+      p.x = nd.x + dx / d * min;
+      p.z = nd.z + dz / d * min;
     }
   }
 }
@@ -194,6 +213,9 @@ function creditKill(n) {
     if (GAME.quest.molerats === 'active' && GAME.quest.kills === 5) {
       uiMsg('Quest updated: the path is clear. Report to Diego.');
     }
+  } else if (n.kind === 'wolf') {
+    GAME.player.items['Wolf meat'] = (GAME.player.items['Wolf meat'] || 0) + 1;
+    uiMsg('Taken: Wolf meat');
   } else {
     const loot = 5 + Math.floor(Math.random() * 10);
     GAME.player.ore += loot;
@@ -223,6 +245,7 @@ function playerSwing() {
 }
 
 function applyPlayerHit() {
+  if (tryHitNode()) return; // gather nodes are local in both modes
   if (NET.active) { netSendSwing(); return; } // the server judges hits online
   const p = GAME.player;
   const f = [Math.sin(p.yaw), Math.cos(p.yaw)];
@@ -234,6 +257,103 @@ function applyPlayerHit() {
     if ((dx * f[0] + dz * f[1]) / (d || 1) < 0.35) continue;
     const dmg = p.weaponDmg + (p.level - 1) * 3 + Math.floor(Math.random() * 4);
     damageNPC(n, dmg);
+  }
+}
+
+// ---- gathering: dry pines, stone blocks, the ore vein ------------------------
+
+const NODE_TOOLS = { tree: 'Woodcutter\'s axe', stone: 'Pickaxe', ore: 'Pickaxe' };
+const NODE_YIELD = { tree: 'Wood', stone: 'Stone', ore: 'Raw ore' };
+const NODE_LABEL = { tree: 'dry pine', stone: 'stone block', ore: 'ore vein' };
+
+function nearestNode(maxD) {
+  const p = GAME.player;
+  let best = null, bestD = maxD;
+  for (const nd of WORLD.nodes) {
+    if (!nd.alive) continue;
+    const d = Math.hypot(nd.x - p.pos.x, nd.z - p.pos.z);
+    if (d < bestD) { bestD = d; best = nd; }
+  }
+  return best;
+}
+
+function tryHitNode() {
+  const p = GAME.player;
+  const f = [Math.sin(p.yaw), Math.cos(p.yaw)];
+  for (const nd of WORLD.nodes) {
+    if (!nd.alive) continue;
+    const dx = nd.x - p.pos.x, dz = nd.z - p.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > nd.r + 2.0) continue;
+    if ((dx * f[0] + dz * f[1]) / (d || 1) < 0.25) continue;
+    const tool = NODE_TOOLS[nd.kind];
+    if (!p.items[tool]) {
+      uiMsg('You need a ' + tool.toLowerCase() + ' for the ' + NODE_LABEL[nd.kind]
+          + '. Whistler sells tools.');
+      return true;
+    }
+    nd.hits--;
+    nd.shakeT = 0.3;
+    const res = NODE_YIELD[nd.kind];
+    p.items[res] = (p.items[res] || 0) + 1;
+    uiMsg('Gathered: ' + res + ' (' + p.items[res] + ')');
+    if (nd.hits <= 0) {
+      nd.alive = false;
+      nd.respawnT = nd.respawn;
+      addXP(nd.kind === 'ore' ? 25 : 10);
+    }
+    return true;
+  }
+  return false;
+}
+
+function updateNodes(dt) {
+  for (const nd of WORLD.nodes) {
+    if (nd.shakeT > 0) nd.shakeT -= dt;
+    if (!nd.alive) {
+      nd.respawnT -= dt;
+      if (nd.respawnT <= 0) {
+        nd.alive = true;
+        nd.hits = nd.maxHits;
+      }
+    }
+  }
+}
+
+// ---- Whistler's economy -------------------------------------------------------
+// Players sell gathered goods for ore; Whistler's smelter slowly burns his stock
+// down into nuggets (two goods in, one good's worth of ore out — lossy on
+// purpose, so the valley never drowns in ore) which frees room to buy more.
+
+const TRADE_PRICES = { 'Wood': 4, 'Stone': 6, 'Raw ore': 12 };
+
+const MERCHANT = {
+  stock: { 'Dried meat': 8, 'Health potion': 4, 'Wood': 0, 'Stone': 0, 'Raw ore': 0 },
+  cap:   { 'Dried meat': 8, 'Health potion': 4, 'Wood': 18, 'Stone': 14, 'Raw ore': 8 },
+  smelted: 0,
+  convertT: 16,
+  restockT: 40,
+};
+
+function updateMerchant(dt) {
+  MERCHANT.convertT -= dt;
+  if (MERCHANT.convertT <= 0) {
+    MERCHANT.convertT = 16;
+    let pick = null;
+    for (const res in TRADE_PRICES) {
+      if (MERCHANT.stock[res] > 0 && (!pick || MERCHANT.stock[res] > MERCHANT.stock[pick])) pick = res;
+    }
+    if (pick) {
+      const used = Math.min(2, MERCHANT.stock[pick]);
+      MERCHANT.stock[pick] -= used;
+      MERCHANT.smelted += Math.max(1, Math.floor(TRADE_PRICES[pick] * used / 2));
+    }
+  }
+  MERCHANT.restockT -= dt;
+  if (MERCHANT.restockT <= 0) {
+    MERCHANT.restockT = 40;
+    if (MERCHANT.stock['Dried meat'] < MERCHANT.cap['Dried meat']) MERCHANT.stock['Dried meat']++;
+    if (MERCHANT.stock['Health potion'] < MERCHANT.cap['Health potion']) MERCHANT.stock['Health potion']++;
   }
 }
 
@@ -415,6 +535,8 @@ function updateGame(dt, input) {
   if (GAME.timeOfDay < prevTod) GAME.day++; // midnight rolled over
   updatePlayer(dt, input);
   for (const n of GAME.npcs) updateNPC(n, dt);
+  updateNodes(dt);
+  updateMerchant(dt);
   if (GAME.focusT > 0) GAME.focusT -= dt;
 }
 
@@ -436,14 +558,52 @@ function nearestTalkable() {
 const ITEM_DEFS = {
   'Dried meat': { heal: 30, desc: 'Tough as leather, but it fills the stomach.' },
   'Molerat meat': { heal: 20, desc: 'Smells awful. Tastes worse. Still food.' },
+  'Wolf meat': { heal: 25, desc: 'Lean and stringy. A real meal, if you killed it yourself.' },
+  'Health potion': { heal: 50, verb: 'Drink', desc: 'An alchemist\'s brew. Knits flesh in seconds.' },
+  'Wood': { desc: 'Seasoned pine timber. Whistler pays 4 ore for it.' },
+  'Stone': { desc: 'Quarried stone. Whistler pays 6 ore for it.' },
+  'Raw ore': { desc: 'Magic ore, straight from the vein. Whistler pays 12 ore for it.' },
+  'Pickaxe': { desc: 'Breaks stone blocks and the glowing ore vein.' },
+  'Woodcutter\'s axe': { desc: 'Fells the dry pines scattered around the valley.' },
+  'Torch': { desc: 'An offhand torch. Light it and the night backs off a few paces.' },
+  'Old Camp blade': { dmg: 18, desc: 'Diego\'s gift. Plain, pitted, and it cuts.' },
+  'Soldier\'s sword': { dmg: 28, desc: 'Guard issue. Its last owner no longer needs it.' },
+  'Ore blade': { dmg: 40, desc: 'Forged with magic ore. The barons would not approve.' },
 };
+
+const SHOP_WEAPONS = [
+  { name: 'Soldier\'s sword', price: 80 },
+  { name: 'Ore blade', price: 220 },
+];
+
+// Equip a weapon from the inventory ('Fists' is always available).
+function equipWeapon(name) {
+  const p = GAME.player;
+  if (name !== 'Fists' && (!p.items[name] || !ITEM_DEFS[name].dmg)) return;
+  p.weaponName = name;
+  p.weaponDmg = name === 'Fists' ? 6 : ITEM_DEFS[name].dmg;
+  p.hasSword = name !== 'Fists';
+  uiMsg('Equipped: ' + name);
+  renderInventory();
+}
+
+function toggleTorch() {
+  const p = GAME.player;
+  if (!p.items['Torch']) return;
+  p.torchLit = !p.torchLit;
+  uiMsg(p.torchLit ? 'You light the torch.' : 'You snuff the torch.');
+  renderInventory();
+}
 
 function eatItem(name) {
   const p = GAME.player;
   if (!p.items[name] || p.items[name] <= 0) return;
+  const def = ITEM_DEFS[name];
+  if (!def.heal) return;
   p.items[name]--;
-  p.hp = Math.min(p.maxhp, p.hp + ITEM_DEFS[name].heal);
-  uiMsg('You eat the ' + name.toLowerCase() + '. (+' + ITEM_DEFS[name].heal + ' HP)');
+  p.hp = Math.min(p.maxhp, p.hp + def.heal);
+  uiMsg('You ' + (def.verb || 'eat').toLowerCase() + ' the ' + name.toLowerCase()
+      + '. (+' + def.heal + ' HP)');
   renderInventory();
 }
 
@@ -503,10 +663,9 @@ const DIALOGS = {
           { t: 'Consider it done.', fn: function() {
               GAME.quest.molerats = 'active';
               const p = GAME.player;
-              p.hasSword = true;
-              p.weaponName = 'Old Camp blade';
-              p.weaponDmg = 18;
+              p.items['Old Camp blade'] = 1;
               uiMsg('Received: Old Camp blade');
+              equipWeapon('Old Camp blade');
               uiMsg('New quest: clear the molerats from the mine path. (Journal: J)');
               return null;
             } },
@@ -552,31 +711,131 @@ const DIALOGS = {
     main(n) {
       return {
         text: 'Psst. New blood. Got ore on you? I deal in things a digger actually needs — '
-            + 'not the watered-down rice schnapps they pour by the fire.',
+            + 'food, tools, steel. And I BUY: wood, stone, raw ore. My smelter turns the lot '
+            + 'into nuggets, slowly. You carry ' + GAME.player.ore + ' ore.',
         opts: [
-          { t: 'Show me your wares.', next: 'trade' },
+          { t: 'Show me food and potions.', next: 'trade' },
+          { t: 'I need tools.', next: 'tools' },
+          { t: 'Show me your blades.', next: 'weapons' },
+          { t: 'I have goods to sell.', next: 'sell' },
           { t: 'Not interested.', next: null },
         ],
       };
     },
     trade(n) {
+      function buy(name, price) {
+        return function() {
+          const p = GAME.player;
+          if (MERCHANT.stock[name] <= 0) {
+            uiMsg('Whistler: "Fresh out. My stock comes back slowly — check later."');
+          } else if (p.ore >= price) {
+            p.ore -= price;
+            MERCHANT.stock[name]--;
+            p.items[name] = (p.items[name] || 0) + 1;
+            uiMsg('Bought: ' + name);
+          } else {
+            uiMsg('Not enough ore.');
+          }
+          return 'trade';
+        };
+      }
       return {
-        text: 'Dried meat, ten nuggets apiece. Keeps you on your feet when a molerat\'s had '
-            + 'a taste of you. You carry ' + GAME.player.ore + ' ore.',
+        text: 'Dried meat keeps you on your feet, the potion puts you back ON them. '
+            + 'Stock: ' + MERCHANT.stock['Dried meat'] + ' meat, '
+            + MERCHANT.stock['Health potion'] + ' potions. You carry ' + GAME.player.ore + ' ore.',
         opts: [
-          { t: 'Buy dried meat. (10 ore)', fn: function() {
-              const p = GAME.player;
-              if (p.ore >= 10) {
-                p.ore -= 10;
-                p.items['Dried meat'] = (p.items['Dried meat'] || 0) + 1;
-                uiMsg('Bought: Dried meat');
-              } else {
-                uiMsg('Not enough ore.');
-              }
-              return 'trade';
-            } },
+          { t: 'Buy dried meat. (10 ore)', fn: buy('Dried meat', 10) },
+          { t: 'Buy a health potion. (25 ore)', fn: buy('Health potion', 25) },
           { t: 'That\'s all.', next: 'main' },
         ],
+      };
+    },
+    tools(n) {
+      function buyTool(name, price) {
+        return function() {
+          const p = GAME.player;
+          if (p.items[name]) {
+            uiMsg('You already own a ' + name.toLowerCase() + '.');
+          } else if (p.ore >= price) {
+            p.ore -= price;
+            p.items[name] = 1;
+            uiMsg('Bought: ' + name);
+          } else {
+            uiMsg('Not enough ore.');
+          }
+          return 'tools';
+        };
+      }
+      return {
+        text: 'A pickaxe for the stone blocks and the ore vein out north-west — mind the '
+            + 'wolves. An axe for the dry pines. A torch for when the sun leaves you. '
+            + 'You carry ' + GAME.player.ore + ' ore.',
+        opts: [
+          { t: 'Buy a pickaxe. (35 ore)', fn: buyTool('Pickaxe', 35) },
+          { t: 'Buy a woodcutter\'s axe. (35 ore)', fn: buyTool('Woodcutter\'s axe', 35) },
+          { t: 'Buy a torch. (15 ore)', fn: buyTool('Torch', 15) },
+          { t: 'That\'s all.', next: 'main' },
+        ],
+      };
+    },
+    weapons(n) {
+      const opts = SHOP_WEAPONS.map(function(w) {
+        return { t: 'Buy the ' + w.name.toLowerCase() + ' — damage ' + ITEM_DEFS[w.name].dmg
+                  + '. (' + w.price + ' ore)',
+          fn: function() {
+            const p = GAME.player;
+            if (p.items[w.name]) {
+              uiMsg('You already own the ' + w.name.toLowerCase() + '.');
+            } else if (p.ore >= w.price) {
+              p.ore -= w.price;
+              p.items[w.name] = 1;
+              uiMsg('Bought: ' + w.name);
+              if (ITEM_DEFS[w.name].dmg > p.weaponDmg) equipWeapon(w.name);
+            } else {
+              uiMsg('Not enough ore.');
+            }
+            return 'weapons';
+          } };
+      });
+      opts.push({ t: 'That\'s all.', next: 'main' });
+      return {
+        text: 'Steel that beats the Old Camp blade — don\'t ask where it\'s from. '
+            + 'Win a duel or two and it pays for itself. You carry ' + GAME.player.ore + ' ore.',
+        opts: opts,
+      };
+    },
+    sell(n) {
+      const p = GAME.player;
+      const opts = [];
+      for (const res in TRADE_PRICES) {
+        const have = p.items[res] || 0;
+        const room = MERCHANT.cap[res] - MERCHANT.stock[res];
+        opts.push({ t: 'Sell ' + res.toLowerCase() + ' ×' + have + '. (' + TRADE_PRICES[res]
+                      + ' ore each, takes up to ' + room + ')',
+          fn: function(r) { return function() {
+            const amt = Math.min(GAME.player.items[r] || 0, MERCHANT.cap[r] - MERCHANT.stock[r]);
+            if (!(GAME.player.items[r] > 0)) {
+              uiMsg('You have no ' + r.toLowerCase() + ' to sell.');
+            } else if (amt <= 0) {
+              uiMsg('Whistler: "No room for more ' + r.toLowerCase()
+                  + ' until the smelter catches up. Come back later."');
+            } else {
+              GAME.player.items[r] -= amt;
+              MERCHANT.stock[r] += amt;
+              GAME.player.ore += amt * TRADE_PRICES[r];
+              uiMsg('Sold: ' + amt + ' × ' + r + ' for ' + amt * TRADE_PRICES[r] + ' ore');
+            }
+            return 'sell';
+          }; }(res) });
+      }
+      opts.push({ t: 'That\'s all.', next: 'main' });
+      return {
+        text: 'Wood 4, stone 6, raw ore 12 nuggets apiece — while I have room. The smelter '
+            + 'has burned my stock into ' + MERCHANT.smelted + ' nuggets so far. Holding: '
+            + MERCHANT.stock['Wood'] + '/' + MERCHANT.cap['Wood'] + ' wood, '
+            + MERCHANT.stock['Stone'] + '/' + MERCHANT.cap['Stone'] + ' stone, '
+            + MERCHANT.stock['Raw ore'] + '/' + MERCHANT.cap['Raw ore'] + ' raw ore.',
+        opts: opts,
       };
     },
   },

@@ -69,7 +69,60 @@ function drawHumanoid(c) {
       drawPart(M4.chain(shoulder, M4.translate(0, -1.26, 0), M4.scale(0.055, 0.88, 0.025)),
                tintCol([0.65, 0.66, 0.70], flash)); // blade
     }
+    // lit torch in the left (off) hand
+    if (s === -1 && c.torchLit && a.deadT <= 0) {
+      drawPart(M4.chain(shoulder, M4.translate(0, -0.86, 0.10), M4.rotX(-0.5),
+                        M4.scale(0.06, 0.62, 0.06)),
+               tintCol([0.30, 0.22, 0.13], flash)); // shaft
+      drawPart(M4.chain(shoulder, M4.translate(0, -0.62, 0.34), M4.rotX(-0.5),
+                        M4.scale(0.11, 0.14, 0.11)),
+               tintCol([1.0, 0.55, 0.12], flash)); // ember head
+    }
   }
+}
+
+// Where a character's torch flame sits in world space (matches the pose above).
+function torchWorldPos(c) {
+  const s = Math.sin(c.yaw), co = Math.cos(c.yaw);
+  const lx = -0.31, ly = 1.45 - 0.55, lz = 0.42; // left shoulder, lowered hand, forward
+  return [c.pos.x + lx * co + lz * s, c.pos.y + ly + 0.25, c.pos.z - lx * s + lz * co];
+}
+
+function drawWolf(c) {
+  const a = c.anim;
+  let base = M4.mul(M4.translate(c.pos.x, c.pos.y - a.deadT * 0.3, c.pos.z), M4.rotY(c.yaw));
+  if (a.deadT > 0) base = M4.mul(base, M4.rotZ(a.deadT * Math.PI / 2));
+  if (a.attackT > 0) base = M4.mul(base, M4.rotX(-Math.sin(Math.min(a.attackT, 1) * Math.PI) * 0.6));
+  const flash = a.flash;
+  const fur = [0.42, 0.42, 0.45];
+  const furD = [0.30, 0.30, 0.34];
+  const swing = Math.sin(a.walkPhase) * 0.7 * a.moveAmt;
+  // body + chest
+  drawPart(M4.chain(base, M4.translate(0, 0.72, -0.12), M4.scale(0.50, 0.48, 1.15)),
+           tintCol(fur, flash));
+  drawPart(M4.chain(base, M4.translate(0, 0.74, 0.34), M4.scale(0.56, 0.56, 0.50)),
+           tintCol(furD, flash));
+  // head, snout, ears
+  drawPart(M4.chain(base, M4.translate(0, 1.00, 0.72), M4.scale(0.34, 0.32, 0.36)),
+           tintCol(fur, flash));
+  drawPart(M4.chain(base, M4.translate(0, 0.92, 1.00), M4.scale(0.18, 0.16, 0.30)),
+           tintCol(furD, flash));
+  for (const s of [-1, 1]) {
+    drawPart(M4.chain(base, M4.translate(s * 0.12, 1.22, 0.64), M4.scale(0.08, 0.16, 0.06)),
+             tintCol(furD, flash));
+  }
+  // legs
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const m = M4.chain(base, M4.translate(sx * 0.20, 0.52, sz * 0.44 - 0.10),
+                         M4.rotX(swing * sx * sz),
+                         M4.translate(0, -0.26, 0), M4.scale(0.13, 0.52, 0.15));
+      drawPart(m, tintCol(furD, flash));
+    }
+  }
+  // tail
+  drawPart(M4.chain(base, M4.translate(0, 0.86, -0.80), M4.rotX(-0.5), M4.scale(0.10, 0.10, 0.55)),
+           tintCol(furD, flash));
 }
 
 function drawMolerat(c) {
@@ -108,5 +161,6 @@ function drawMolerat(c) {
 
 function drawCharacter(c) {
   if (c.kind === 'molerat') drawMolerat(c);
+  else if (c.kind === 'wolf') drawWolf(c);
   else drawHumanoid(c);
 }
