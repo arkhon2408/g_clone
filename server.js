@@ -133,18 +133,30 @@ npcs.forEach(function(n, i) {
 });
 
 const world = { timeOfDay: 10.2 / 24, day: 1 };
+const FEEDBACK_FILE = 'feedback.json';
+let feedback = [];
+let feedbackDirty = false;
+const hadLocalFeedback = fs.existsSync(FEEDBACK_FILE);
+if (hadLocalFeedback) feedback = JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8'));
+
 if (fs.existsSync(SAVE_FILE)) {
   const saved = JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8'));
   world.timeOfDay = saved.timeOfDay;
   world.day = saved.day;
   console.log('Restored world: day ' + world.day);
-} else if (GIST_ID) {
+}
+if (GIST_ID && (!fs.existsSync(SAVE_FILE) || !hadLocalFeedback)) {
   // fresh disk (free hosts wipe it on every deploy) — restore from the gist
-  gistFetch(function(saved) {
-    if (saved && saved.day >= world.day) {
-      world.timeOfDay = saved.timeOfDay;
-      world.day = saved.day;
+  gistFetch(function(g) {
+    if (!g) return;
+    if (g.world && g.world.day >= world.day) {
+      world.timeOfDay = g.world.timeOfDay;
+      world.day = g.world.day;
       console.log('Restored world from gist: day ' + world.day);
+    }
+    if (g.feedback && !hadLocalFeedback) {
+      feedback = g.feedback;
+      console.log('Restored ' + feedback.length + ' feedback entries from gist');
     }
   });
 }
@@ -177,17 +189,24 @@ function gistFetch(cb) {
   gistRequest('GET', null, function(status, data) {
     if (status !== 200) { console.log('gist fetch: HTTP ' + status); cb(null); return; }
     const g = JSON.parse(data);
-    const f = g.files && g.files[SAVE_FILE];
-    cb(f && f.content ? JSON.parse(f.content) : null);
+    const w = g.files && g.files[SAVE_FILE];
+    const f = g.files && g.files[FEEDBACK_FILE];
+    cb({ world: w && w.content ? JSON.parse(w.content) : null,
+         feedback: f && f.content ? JSON.parse(f.content) : null });
   });
 }
 
 let lastGistDay = 0;
 function gistBackup() {
-  if (!GIST_ID || !GITHUB_TOKEN || world.day === lastGistDay) return;
+  if (!GIST_ID || !GITHUB_TOKEN) return;
+  if (world.day === lastGistDay && !feedbackDirty) return;
   lastGistDay = world.day;
+  feedbackDirty = false;
   const files = {};
   files[SAVE_FILE] = { content: JSON.stringify({ timeOfDay: world.timeOfDay, day: world.day }) };
+  if (feedback.length) {
+    files[FEEDBACK_FILE] = { content: JSON.stringify(feedback, null, 1) };
+  }
   gistRequest('PATCH', JSON.stringify({ files: files }), function(status) {
     if (status !== 200) console.log('gist backup: HTTP ' + status);
   });
@@ -331,7 +350,45 @@ function dropClient(c, reason) {
   c.sock.destroy();
 }
 
+const lastFeedbackByIp = new Map(); // ip -> uptime seconds of last accepted post
+
 const server = http.createServer(function(req, res) {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*',
+                         'Access-Control-Allow-Methods': 'GET, POST',
+                         'Access-Control-Allow-Headers': '*' });
+    res.end();
+    return;
+  }
+  if (req.url.indexOf('/feedback') === 0 && req.method === 'POST') {
+    // body is plain text: first line the name, the rest the message
+    let body = '';
+    req.on('data', function(ch) {
+      body += ch;
+      if (body.length > 2048) req.destroy();
+    });
+    req.on('end', function() {
+      const ip = req.socket.remoteAddress || '?';
+      const last = lastFeedbackByIp.get(ip) || -1e9;
+      const nl = body.indexOf('\n');
+      const name = (nl < 0 ? '' : body.slice(0, nl)).trim().slice(0, 24);
+      const msg = (nl < 0 ? body : body.slice(nl + 1)).trim().slice(0, 500);
+      const ok = msg.length > 0 && now - last > 10;
+      if (ok) {
+        lastFeedbackByIp.set(ip, now);
+        feedback.push({ at: new Date().toISOString(), name: name || 'anonymous', msg: msg });
+        if (feedback.length > 500) feedback = feedback.slice(-500);
+        feedbackDirty = true;
+        fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(feedback, null, 1));
+        console.log('feedback from ' + (name || 'anonymous') + ': '
+                  + msg.slice(0, 80).replace(/\n/g, ' '));
+      }
+      res.writeHead(ok ? 200 : 429, { 'Content-Type': 'text/plain',
+                                      'Access-Control-Allow-Origin': '*' });
+      res.end(ok ? 'ok' : 'rejected');
+    });
+    return;
+  }
   if (req.url.indexOf('/wait') === 0) {
     // responds after a delay — used by the client test harness to hold the
     // page's load event open until the websocket handshake has finished
@@ -343,7 +400,8 @@ const server = http.createServer(function(req, res) {
   }
   res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
   res.end('Gothic world server — day ' + world.day + ', ' + clients.size + ' players online.\n'
-        + 'Point the game at this host with ?server=ws(s)://...\n');
+        + 'Point the game at this host with ?server=ws(s)://...\n'
+        + feedback.length + ' feedback entries on file.\n');
 });
 
 server.on('upgrade', function(req, sock) {

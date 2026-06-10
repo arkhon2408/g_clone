@@ -14,7 +14,7 @@ const IS_TOUCH = window.matchMedia('(pointer: coarse)').matches
   || window.location.search.indexOf('touch') >= 0;
 
 // Automated test / screenshot modes: no networking, no saved progress.
-const IS_TEST_MODE = /[?&](autotest|dlgshot|invshot|chrshot|oreshot)/.test(window.location.search);
+const IS_TEST_MODE = /[?&](autotest|dlgshot|invshot|chrshot|oreshot|fbshot)/.test(window.location.search);
 
 const VS_WORLD = `#version 300 es
 layout(location=0) in vec3 aPos;

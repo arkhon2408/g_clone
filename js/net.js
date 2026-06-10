@@ -446,6 +446,7 @@ function saveProgress() {
     items: p.items, hasSword: p.hasSword, weaponName: p.weaponName,
     weaponDmg: p.weaponDmg, torchLit: p.torchLit,
     quest: GAME.quest, kills: GAME.kills, day: GAME.day,
+    lastSoupDay: GAME.lastSoupDay,
     merchant: { stock: MERCHANT.stock, smelted: MERCHANT.smelted },
   }));
 }
@@ -476,4 +477,5 @@ function loadProgress() {
   GAME.quest = s.quest;
   GAME.kills = s.kills;
   GAME.day = s.day || 1;
+  GAME.lastSoupDay = s.lastSoupDay || 0;
 }

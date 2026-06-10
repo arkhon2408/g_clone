@@ -48,6 +48,56 @@ function initUI() {
   document.getElementById('chatCancel').addEventListener('click', function() {
     if (GAME.uiOpen === 'chat') closeChat(false);
   });
+  // feedback panel (title screen) — lands on the world server, kept in the gist
+  document.getElementById('titleFeedback').addEventListener('click', function(e) {
+    e.stopPropagation();
+    openFeedback();
+  });
+  document.getElementById('fbClose').addEventListener('click', closeFeedback);
+  document.getElementById('fbSend').addEventListener('click', sendFeedback);
+}
+
+// ---- feedback ----------------------------------------------------------------
+
+function openFeedback() {
+  const fb = document.getElementById('feedback');
+  fb.style.display = 'block';
+  document.getElementById('fbStatus').textContent = '';
+  if (NET.name && !document.getElementById('fbName').value) {
+    document.getElementById('fbName').value = NET.name;
+  }
+  document.getElementById('fbText').focus();
+}
+
+function closeFeedback() {
+  document.getElementById('feedback').style.display = 'none';
+}
+
+function sendFeedback() {
+  const name = document.getElementById('fbName').value.trim().slice(0, 24);
+  const msg = document.getElementById('fbText').value.trim().slice(0, 500);
+  const status = document.getElementById('fbStatus');
+  if (!msg) {
+    status.textContent = 'Write something first.';
+    return;
+  }
+  if (!NET.url) {
+    status.textContent = 'No world server configured — nowhere to send it.';
+    return;
+  }
+  status.textContent = 'Sending... (a sleeping server can take a minute to wake)';
+  // plain-text body "name\nmessage" — a simple request, no CORS preflight
+  fetch(NET.url.replace(/^ws/, 'http') + '/feedback', { method: 'POST', body: name + '\n' + msg })
+    .then(function(res) {
+      if (res.ok) {
+        status.textContent = 'Sent. Thank you, stranger.';
+        document.getElementById('fbText').value = '';
+      } else {
+        status.textContent = 'The server refused it (HTTP ' + res.status + '). Try again in a bit.';
+      }
+    }, function(err) {
+      status.textContent = 'Could not reach the world server: ' + err.message;
+    });
 }
 
 function uiMsg(text) {

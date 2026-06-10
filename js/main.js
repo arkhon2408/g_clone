@@ -19,6 +19,7 @@ function startGame(multiplayer) {
   if (GAME.started) return;
   GAME.started = true;
   UI.title.style.display = 'none';
+  closeFeedback();
   uiMsg('You wake on cold ground. The Barrier shimmers above the mountains.');
   uiMsg('The Old Camp lies north — follow the path.');
   if (multiplayer) netStart();

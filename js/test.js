@@ -65,6 +65,21 @@ if (window.location.search.indexOf('mpshot') >= 0) {
   });
 }
 
+// ?fbshot — open the feedback panel on the title screen; with ?server= it
+// fills the form and actually sends, so the screenshot shows the result
+if (window.location.search.indexOf('fbshot') >= 0) {
+  window.addEventListener('DOMContentLoaded', function() {
+    openFeedback();
+    const m = /[?&]server=([^&]+)/.exec(window.location.search);
+    if (m) {
+      NET.url = decodeURIComponent(m[1]);
+      document.getElementById('fbName').value = 'TestScribe';
+      document.getElementById('fbText').value = 'Sent from the fbshot harness.';
+      sendFeedback();
+    }
+  });
+}
+
 if (window.location.search.indexOf('autotest') >= 0) {
   window.addEventListener('DOMContentLoaded', function() {
     const out = [];
@@ -222,6 +237,20 @@ if (window.location.search.indexOf('autotest') >= 0) {
     check('weapons swap from the inventory', p.weaponName === 'Old Camp blade'
           && p.weaponDmg === 18);
     equipWeapon('Ore blade');
+
+    // 6f. Snaf's one soup per day
+    const soupNode1 = DIALOGS.snaf.main(null);
+    check('Snaf offers the daily soup', !!opt(soupNode1, 'ladle'));
+    opt(soupNode1, 'ladle').fn();
+    check('soup received', (p.items['Molerat soup'] || 0) === 1
+          && GAME.lastSoupDay === GAME.day);
+    check('no second soup today', !opt(DIALOGS.snaf.main(null), 'ladle'));
+    GAME.day++;
+    check('a new day, a new soup', !!opt(DIALOGS.snaf.main(null), 'ladle'));
+    GAME.day--;
+    p.hp = 50;
+    eatItem('Molerat soup');
+    check('soup heals 40', p.hp === 90);
 
     // 6b. character screen opens and closes
     toggleCharacter();

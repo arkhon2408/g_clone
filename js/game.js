@@ -16,6 +16,7 @@ const GAME = {
   dialogNpc: null,
   kills: 0, // every beast and man slain
   day: 1,
+  lastSoupDay: 0, // Snaf ladles out one free soup per day
 };
 
 const SKIN = [0.82, 0.62, 0.48];
@@ -571,6 +572,7 @@ function nearestTalkable() {
 const ITEM_DEFS = {
   'Dried meat': { heal: 30, desc: 'Tough as leather, but it fills the stomach.' },
   'Molerat meat': { heal: 20, desc: 'Smells awful. Tastes worse. Still food.' },
+  'Molerat soup': { heal: 40, desc: 'Snaf\'s daily ladle. Better than it has any right to be.' },
   'Wolf meat': { heal: 25, desc: 'Lean and stringy. A real meal, if you killed it yourself.' },
   'Health potion': { heal: 50, verb: 'Drink', desc: 'An alchemist\'s brew. Knits flesh in seconds.' },
   'Wood': { desc: 'Seasoned pine timber. Whistler pays 4 ore for it.' },
@@ -854,10 +856,24 @@ const DIALOGS = {
   },
   snaf: {
     main(n) {
+      const opts = [];
+      if (GAME.day > GAME.lastSoupDay) {
+        opts.push({ t: 'I\'ll take that ladle.', fn: function() {
+            GAME.lastSoupDay = GAME.day;
+            const p = GAME.player;
+            p.items['Molerat soup'] = (p.items['Molerat soup'] || 0) + 1;
+            uiMsg('Received: Molerat soup');
+            return null;
+          } });
+      }
+      opts.push({ t: GAME.day > GAME.lastSoupDay ? 'I\'ll pass.' : 'See you tomorrow.', next: null });
       return {
-        text: 'Soup\'s not done. Come back when it stops tasting like molerat. Actually... '
-            + 'it IS molerat. Come back anyway.',
-        opts: [{ t: 'Right.', next: null }],
+        text: GAME.day > GAME.lastSoupDay
+          ? 'Soup\'s on! One ladle per digger per day, that\'s the rule. It\'s molerat. '
+            + 'It\'s always molerat. You want it or not?'
+          : 'You already had your ladle today. The pot has to last the whole camp — '
+            + 'come back tomorrow.',
+        opts: opts,
       };
     },
   },

@@ -24,7 +24,8 @@ Useful URL parameters:
 - **The Old Camp** — palisade ring with a south gate, diggers' huts, the ore barons'
   castle keep, campfires that act as real light sources at night.
 - **People** — Diego at the gate (quest giver), gate guards, Whistler the trader,
-  Snaf the cook, wandering diggers — each with dialogue.
+  Snaf the cook (one free ladle of molerat soup per day — heals 40), wandering
+  diggers — each with dialogue.
 - **A quest** — clear five molerats from the old mine path for 50 ore and a blade.
 - **Combat** — melee swings with timing, aggro/chase/leash AI, XP and level-ups.
 - **Hostiles** — molerats on the mine path, bandits at the ruined watchtower (NE),
@@ -109,6 +110,11 @@ the server backs the world up to a GitHub **Gist** (and restores from it on boot
 2. Create a token at github.com/settings/tokens with only the **gist** scope.
 3. On the host set `GIST_ID` and `GITHUB_TOKEN`. Backups happen at most once per
    in-game day (~every 8 minutes), so the gist history stays small.
+
+**Feedback**: the title screen has a "Send feedback" form. Submissions POST to the
+server's `/feedback` endpoint (plain text, rate-limited per IP), land in
+`feedback.json`, and ride along in the same gist backup — read them on
+gist.github.com. The server's health page shows the count on file.
 
 Which server the Multiplayer button joins (first match wins):
 
