@@ -15,11 +15,13 @@ function lockPointer() {
   }
 }
 
-function startGame() {
+function startGame(multiplayer) {
+  if (GAME.started) return;
   GAME.started = true;
   UI.title.style.display = 'none';
   uiMsg('You wake on cold ground. The Barrier shimmers above the mountains.');
   uiMsg('The Old Camp lies north — follow the path.');
+  if (multiplayer) netStart();
   lockPointer();
 }
 
@@ -28,7 +30,7 @@ function initInput() {
     INPUT[e.code] = true;
     if (e.code === 'Space') e.preventDefault();
     if (!GAME.started) {
-      if (e.code === 'Enter') startGame();
+      if (e.code === 'Enter') startGame(false);
       return;
     }
     if (e.code === 'KeyE' && !GAME.uiOpen) {
@@ -60,10 +62,7 @@ function initInput() {
     }
   });
   document.addEventListener('mousedown', function(e) {
-    if (!GAME.started) {
-      startGame();
-      return;
-    }
+    if (!GAME.started) return; // the title buttons handle starting
     if (GAME.uiOpen) return;
     if (document.pointerLockElement !== canvas && !DEMO_MODE) {
       lockPointer();
@@ -266,13 +265,21 @@ window.addEventListener('DOMContentLoaded', function() {
   initInput();
   initTouch();
   netInit();
+  document.getElementById('btnSingle').addEventListener('click', function(e) {
+    e.stopPropagation();
+    startGame(false);
+  });
+  document.getElementById('btnMulti').addEventListener('click', function(e) {
+    e.stopPropagation();
+    startGame(true);
+  });
   setInterval(function() { if (GAME.started) saveProgress(); }, 10000);
   window.addEventListener('beforeunload', function() { if (GAME.started) saveProgress(); });
   if (DEMO_MODE) {
     GAME.timeOfDay = 0.42; // pleasant afternoon light for screenshots
     const tm = /[?&]time=([0-9.]+)/.exec(window.location.search);
     if (tm) GAME.timeOfDay = parseFloat(tm[1]);
-    startGame();
+    startGame(false);
   }
   render(); // paint the first frame immediately
   requestAnimationFrame(frame);

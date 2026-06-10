@@ -33,7 +33,7 @@ if (window.location.search.indexOf('chrshot') >= 0) {
 // taken only after the websocket session is established.
 if (window.location.search.indexOf('mpshot') >= 0) {
   window.addEventListener('DOMContentLoaded', function() {
-    startGame();
+    startGame(true);
     const m = /[?&]server=([^&]+)/.exec(window.location.search);
     if (m) {
       const httpUrl = decodeURIComponent(m[1]).replace(/^ws/, 'http');

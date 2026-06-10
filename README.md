@@ -60,9 +60,11 @@ Mobile (auto-detected when the primary pointer is touch; force with `?touch`):
 
 ![multiplayer](screenshot-mp.png)
 
-One server, n players, one persistent world. The static game stays on Netlify (or
-any static host); `server.js` runs separately — it's a zero-dependency Node script
-(the WebSocket protocol is implemented by hand, no npm install needed).
+One server, n players, one persistent world. The title screen lets every player
+choose **Single Player** (their own local Colony) or **Multiplayer** (the shared
+world). The static game stays on Netlify (or any static host); `server.js` runs
+separately — it's a zero-dependency Node script (the WebSocket protocol is
+implemented by hand, no npm install needed).
 
 The server owns world time (saved to `world.json`, so it survives restarts) and all
 hostile NPCs: their AI, deaths and **respawns** (molerats 60s, bandits 120s). Hits
@@ -76,13 +78,14 @@ Run it:
 node server.js          # listens on $PORT or 8080
 ```
 
-Point clients at it (any of these):
+Which server the Multiplayer button joins (first match wins):
 
-- `https://your-game.netlify.app/?server=wss://your-server.example.com` (remembered)
-- set `DEFAULT_SERVER` at the top of `js/net.js` and redeploy — then plain visits connect
-- opened locally (file:// or localhost) it auto-tries `ws://localhost:8080`
+1. `?server=wss://...` URL parameter (remembered in the browser afterwards)
+2. `DEFAULT_SERVER` at the top of `js/net.js` (currently the Render deployment)
+3. `ws://localhost:8080` as a dev fallback on file:// or localhost
 
-If no server answers, the game silently runs single-player (hostiles still respawn).
+If the server doesn't answer, the game keeps running single-player and retries in
+the background (hostiles respawn in single player too).
 
 Hosting the server for free: create a GitHub repo containing `server.js`, then on
 [render.com](https://render.com) make a **Web Service** from it — runtime Node,

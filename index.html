@@ -130,8 +130,13 @@
     text-shadow: 0 2px 6px #000, 0 0 40px rgba(201,168,60,0.35);
   }
   #title h2 { font-size: 16px; letter-spacing: 6px; color: #9a8c68; margin-top: 6px; font-weight: normal; }
-  #titleStart { margin-top: 56px; font-size: 20px; color: #e8dcb8; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100% {opacity:0.55;} 50% {opacity:1;} }
+  #titleBtns { margin-top: 52px; display: flex; gap: 26px; }
+  .titleBtn {
+    border: 2px solid #6b5a36; padding: 12px 32px; font-size: 19px; cursor: pointer;
+    color: #e8dcb8; background: rgba(20,14,8,0.85); letter-spacing: 2px;
+  }
+  .titleBtn:hover { color: #ffe9b0; background: rgba(60,45,22,0.9); }
+  .titleBtn small { display: block; font-size: 11px; color: #8d7f5d; letter-spacing: 1px; margin-top: 4px; }
   #titleControls { margin-top: 28px; font-size: 14px; color: #8d7f5d; letter-spacing: 1px; text-align: center; line-height: 1.7; }
 
   #errbox {
@@ -242,7 +247,10 @@
 <div id="title">
   <h1>GOTHIC</h1>
   <h2>A BROWSER HOMAGE — BUILT FROM SCRATCH</h2>
-  <div id="titleStart">Click to enter the Colony</div>
+  <div id="titleBtns">
+    <div class="titleBtn" id="btnSingle">SINGLE PLAYER<small>your own Colony</small></div>
+    <div class="titleBtn" id="btnMulti">MULTIPLAYER<small>the shared world</small></div>
+  </div>
   <div id="titleControls">
     WASD move &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; Shift walk &nbsp;·&nbsp; Space jump<br>
     Left click attack &nbsp;·&nbsp; E talk &nbsp;·&nbsp; I inventory &nbsp;·&nbsp; J journal &nbsp;·&nbsp; C character

@@ -9,7 +9,6 @@ let TOUCH_RESET = null; // set by initTouch; called when a UI panel opens
 function initTouch() {
   if (!IS_TOUCH) return;
   document.body.classList.add('touch');
-  document.getElementById('titleStart').textContent = 'Tap to enter the Colony';
   document.getElementById('titleControls').innerHTML =
     'Left stick: move &nbsp;·&nbsp; drag anywhere: look around<br>'
     + '⚔ attack &nbsp;·&nbsp; ▲ jump &nbsp;·&nbsp; tap the prompt to talk';
@@ -61,7 +60,7 @@ function initTouch() {
   let lookX = 0, lookY = 0;
   canvas.addEventListener('touchstart', function(e) {
     e.preventDefault();
-    if (!GAME.started) { startGame(); return; }
+    if (!GAME.started) return; // the title buttons handle starting
     if (lookId === null && e.changedTouches.length > 0) {
       const t = e.changedTouches[0];
       lookId = t.identifier;

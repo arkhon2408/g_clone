@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 const net = require('net');
+const tls = require('tls');
 const crypto = require('crypto');
 
 const HOST = process.argv[2] || 'localhost';
@@ -15,11 +16,15 @@ const X = parseFloat(process.argv[5] || '3');
 const Z = parseFloat(process.argv[6] || '56');
 
 const key = crypto.randomBytes(16).toString('base64');
-const sock = net.connect(PORT, HOST, function() {
+function onConnect() {
   sock.write('GET / HTTP/1.1\r\nHost: ' + HOST + '\r\nUpgrade: websocket\r\n'
            + 'Connection: Upgrade\r\nSec-WebSocket-Key: ' + key + '\r\n'
            + 'Sec-WebSocket-Version: 13\r\n\r\n');
-});
+}
+// port 443 -> wss (TLS), anything else -> plain ws
+const sock = PORT === 443
+  ? tls.connect(PORT, HOST, { servername: HOST }, onConnect)
+  : net.connect(PORT, HOST, onConnect);
 
 function frame(str) {
   const payload = Buffer.from(str);

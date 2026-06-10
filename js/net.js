@@ -9,7 +9,7 @@
 // If no server answers, the game silently stays single-player.
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SERVER = ''; // e.g. 'wss://gothic-world.onrender.com'
+const DEFAULT_SERVER = 'wss://g-clone-yoja.onrender.com';
 
 const NET = {
   ws: null,
@@ -39,6 +39,8 @@ function netResolveUrl() {
   return '';
 }
 
+// Resolves the server address but does NOT connect — the player chooses
+// single player or multiplayer on the title screen; netStart() connects.
 function netInit() {
   if (IS_TEST_MODE) return; // autotest & screenshot modes are single-player
   NET.name = localStorage.getItem('gothic_name');
@@ -46,9 +48,16 @@ function netInit() {
     NET.name = 'Stranger-' + (100 + Math.floor(Math.random() * 900));
     localStorage.setItem('gothic_name', NET.name);
   }
-  const url = netResolveUrl();
-  if (!url) return;
-  netConnect(url);
+  NET.url = netResolveUrl();
+}
+
+function netStart() {
+  if (!NET.url) {
+    uiMsg('No world server configured — playing single player.');
+    return;
+  }
+  uiMsg('Connecting to the world... (a sleeping server can take a minute to wake)');
+  netConnect(NET.url);
 }
 
 function netConnect(url) {
