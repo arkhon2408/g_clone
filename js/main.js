@@ -33,6 +33,10 @@ function initInput() {
       else if (e.code === 'Escape') closeChat(false);
       return;
     }
+    if (document.getElementById('feedback').style.display === 'block') {
+      if (e.code === 'Escape') closeFeedback();
+      return; // typing in the feedback form (title screen or in-game)
+    }
     INPUT[e.code] = true;
     if (e.code === 'Space') e.preventDefault();
     if (!GAME.started) {

@@ -55,11 +55,29 @@ function initUI() {
   });
   document.getElementById('fbClose').addEventListener('click', closeFeedback);
   document.getElementById('fbSend').addEventListener('click', sendFeedback);
+  // ...and from the pause screen / character panel while in-game
+  document.getElementById('pauseFeedback').addEventListener('mousedown', function(e) {
+    e.stopPropagation(); // don't let the click re-capture the cursor
+  });
+  document.getElementById('pauseFeedback').addEventListener('click', function(e) {
+    e.stopPropagation();
+    openFeedback();
+  });
+  document.getElementById('chrFeedback').addEventListener('click', function() {
+    if (GAME.uiOpen === 'character') toggleCharacter();
+    openFeedback();
+  });
 }
 
 // ---- feedback ----------------------------------------------------------------
 
 function openFeedback() {
+  if (GAME.started) {
+    if (GAME.uiOpen && GAME.uiOpen !== 'feedback') return;
+    GAME.uiOpen = 'feedback';
+    document.exitPointerLock();
+    UI.pauseHint.style.display = 'none';
+  }
   const fb = document.getElementById('feedback');
   fb.style.display = 'block';
   document.getElementById('fbStatus').textContent = '';
@@ -71,6 +89,10 @@ function openFeedback() {
 
 function closeFeedback() {
   document.getElementById('feedback').style.display = 'none';
+  if (GAME.uiOpen === 'feedback') {
+    GAME.uiOpen = null;
+    lockPointer();
+  }
 }
 
 function sendFeedback() {
