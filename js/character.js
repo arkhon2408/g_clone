@@ -69,15 +69,15 @@ function drawHumanoid(c) {
       drawPart(M4.chain(shoulder, M4.translate(0, -1.26, 0), M4.scale(0.055, 0.88, 0.025)),
                tintCol([0.65, 0.66, 0.70], flash)); // blade
     }
-    // lit torch in the left (off) hand — upright, leaning out past the arm so
-    // it reads from the third-person camera behind the player
+    // lit torch in the left (off) hand — angled forward out of the fist,
+    // ember at the raised front end
     if (s === -1 && c.torchLit && a.deadT <= 0) {
-      drawPart(M4.chain(shoulder, M4.translate(-0.10, -0.50, 0.16), M4.rotZ(0.22),
+      drawPart(M4.chain(shoulder, M4.translate(-0.08, -0.46, 0.22), M4.rotX(0.6),
                         M4.scale(0.06, 0.62, 0.06)),
-               tintCol([0.30, 0.22, 0.13], flash)); // shaft rising from the fist
-      drawPart(M4.chain(shoulder, M4.translate(-0.17, -0.15, 0.16), M4.rotZ(0.22),
+               tintCol([0.30, 0.22, 0.13], flash)); // shaft leaving the fist forward
+      drawPart(M4.chain(shoulder, M4.translate(-0.08, -0.20, 0.40), M4.rotX(0.6),
                         M4.scale(0.11, 0.15, 0.11)),
-               tintCol([1.0, 0.55, 0.12], flash)); // ember head at the top
+               tintCol([1.0, 0.55, 0.12], flash)); // ember head at the top front
     }
   }
 }
@@ -92,7 +92,7 @@ function torchWorldPos(c) {
   const m = M4.chain(
     M4.translate(c.pos.x, c.pos.y + bob, c.pos.z), M4.rotY(c.yaw),
     M4.translate(-0.31, 1.45, 0), M4.rotX(swing),
-    M4.translate(-0.17, -0.15, 0.16));
+    M4.translate(-0.08, -0.20, 0.40));
   return [m[12], m[13], m[14]];
 }
 
