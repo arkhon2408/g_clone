@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>GOTHIC — a browser remake from scratch</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #d8c8a0; user-select: none; }
+  #c { position: absolute; inset: 0; display: block; }
+
+  #vignette {
+    position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, rgba(120,0,0,0) 45%, rgba(160,10,10,0.85) 100%);
+    transition: opacity 0.12s;
+  }
+  #crosshair {
+    position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2px;
+    border-radius: 50%; background: rgba(230,220,190,0.75); display: none; pointer-events: none;
+  }
+
+  /* ---- HUD ---- */
+  #hud { position: absolute; left: 24px; bottom: 20px; pointer-events: none; }
+  .barOuter {
+    width: 260px; height: 18px; border: 2px solid #6b5a36; background: #14100a;
+    box-shadow: 0 0 8px rgba(0,0,0,0.8), inset 0 0 6px #000;
+  }
+  #hpFill { height: 100%; width: 100%; background: linear-gradient(#a31f12, #6e120a); }
+  #xpOuter { width: 260px; height: 7px; margin-top: 4px; border: 2px solid #6b5a36; background: #14100a; }
+  #xpFill { height: 100%; width: 0%; background: linear-gradient(#c9a83c, #8a7020); }
+  #levelTxt { margin-top: 5px; font-size: 14px; color: #c9b88a; text-shadow: 1px 1px 2px #000; }
+
+  #hudRight { position: absolute; right: 24px; bottom: 20px; text-align: right; pointer-events: none; }
+  #oreTxt { font-size: 18px; color: #c9a83c; text-shadow: 1px 1px 2px #000; }
+  #clockTxt { font-size: 14px; color: #9a8c68; margin-top: 4px; text-shadow: 1px 1px 2px #000; }
+  #netStatus { font-size: 12px; color: #7d7158; margin-top: 4px; text-shadow: 1px 1px 2px #000; }
+  #netStatus.on { color: #7da868; }
+
+  #nametags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .nametag {
+    position: absolute; transform: translate(-50%, -100%); font-size: 13px;
+    color: #cfe0b8; text-shadow: 1px 1px 2px #000, 0 0 6px rgba(0,0,0,0.8);
+    white-space: nowrap;
+  }
+
+  #prompt {
+    position: absolute; left: 50%; bottom: 17%; transform: translateX(-50%);
+    font-size: 18px; color: #e8dcb8; text-shadow: 1px 1px 3px #000; pointer-events: none;
+  }
+  #pauseHint {
+    position: absolute; left: 50%; top: 42%; transform: translateX(-50%);
+    font-size: 20px; color: #d8c8a0; text-shadow: 1px 1px 3px #000; display: none; pointer-events: none;
+  }
+
+  #msglog { position: absolute; left: 24px; top: 20px; pointer-events: none; }
+  .msg {
+    font-size: 15px; color: #e0d4ae; text-shadow: 1px 1px 2px #000; margin-bottom: 3px;
+    animation: msgfade 5s forwards;
+  }
+  @keyframes msgfade { 0% {opacity:1;} 75% {opacity:1;} 100% {opacity:0;} }
+
+  #enemybar { position: absolute; left: 50%; top: 22px; transform: translateX(-50%); display: none; width: 300px; }
+  #enemyname { text-align: center; font-size: 15px; margin-bottom: 3px; text-shadow: 1px 1px 2px #000; }
+  #enemybar .barOuter { width: 300px; height: 12px; }
+  #enemyfill { height: 100%; width: 100%; background: linear-gradient(#a31f12, #6e120a); }
+
+  /* ---- panels ---- */
+  .panel {
+    position: absolute; background: rgba(16,12,7,0.94); border: 2px solid #6b5a36;
+    box-shadow: 0 0 30px rgba(0,0,0,0.9); padding: 18px 22px; display: none;
+  }
+  .panelTitle {
+    font-size: 20px; letter-spacing: 3px; color: #c9a83c; border-bottom: 1px solid #574a2e;
+    padding-bottom: 8px; margin-bottom: 12px; text-transform: uppercase;
+  }
+  .panelClose {
+    position: absolute; right: 8px; top: 8px; padding: 6px 12px; cursor: pointer;
+    font-size: 18px; color: #b8a87e; border: 1px solid #574a2e; line-height: 1;
+  }
+  .panelClose:hover { color: #ffe9b0; background: rgba(110,90,50,0.35); }
+
+  #dialog { left: 50%; bottom: 40px; transform: translateX(-50%); width: min(680px, 92vw); }
+  #dlgName { font-size: 18px; letter-spacing: 2px; color: #c9a83c; margin-bottom: 8px; }
+  #dlgText { font-size: 16px; line-height: 1.45; color: #e0d4ae; margin-bottom: 14px; }
+  .dlgOpt { font-size: 15px; padding: 5px 8px; cursor: pointer; color: #b8a87e; }
+  .dlgOpt:hover { color: #ffe9b0; background: rgba(110,90,50,0.25); }
+
+  #inventory { right: 30px; top: 60px; width: 340px; }
+  .invRow { padding: 8px 6px; border-bottom: 1px solid #3a3220; font-size: 15px; position: relative; }
+  .invDesc { font-size: 12px; color: #8d7f5d; margin-top: 2px; }
+  .invUse {
+    position: absolute; right: 6px; top: 8px; border: 1px solid #6b5a36; padding: 2px 10px;
+    font-size: 13px; cursor: pointer; color: #c9a83c;
+  }
+  .invUse:hover { background: rgba(110,90,50,0.35); color: #ffe9b0; }
+
+  #journal { left: 30px; top: 60px; width: 400px; }
+
+  #character { left: 50%; top: 60px; transform: translateX(-50%); width: 380px; }
+  .charRow {
+    display: flex; justify-content: space-between; padding: 7px 4px;
+    border-bottom: 1px solid #3a3220; font-size: 15px;
+  }
+  .charRow .charVal { color: #e0cf9c; }
+  .charSep { height: 10px; }
+  .jrnEntry { margin-bottom: 14px; font-size: 14px; line-height: 1.4; color: #c4b48c; }
+  .jrnTitle { font-size: 16px; color: #e0cf9c; margin-bottom: 3px; }
+  .jrnDone { opacity: 0.55; }
+
+  /* ---- death / title ---- */
+  #death {
+    position: absolute; inset: 0; background: rgba(8,2,2,0.82); display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+  }
+  #death h1 { font-size: 52px; letter-spacing: 10px; color: #8d1c10; text-shadow: 0 0 24px #000; }
+  #respawnBtn {
+    margin-top: 30px; border: 2px solid #6b5a36; padding: 10px 28px; font-size: 17px;
+    color: #d8c8a0; cursor: pointer; background: rgba(20,14,8,0.9);
+  }
+  #respawnBtn:hover { color: #ffe9b0; background: rgba(60,45,22,0.9); }
+
+  #title {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; background: linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.65));
+    cursor: pointer;
+  }
+  #title h1 {
+    font-size: 84px; letter-spacing: 26px; color: #d8c8a0; margin-left: 26px;
+    text-shadow: 0 2px 6px #000, 0 0 40px rgba(201,168,60,0.35);
+  }
+  #title h2 { font-size: 16px; letter-spacing: 6px; color: #9a8c68; margin-top: 6px; font-weight: normal; }
+  #titleStart { margin-top: 56px; font-size: 20px; color: #e8dcb8; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% {opacity:0.55;} 50% {opacity:1;} }
+  #titleControls { margin-top: 28px; font-size: 14px; color: #8d7f5d; letter-spacing: 1px; text-align: center; line-height: 1.7; }
+
+  #errbox {
+    position: absolute; left: 0; right: 0; top: 0; display: none; z-index: 99;
+    background: #4a0a0a; color: #ffd9d9; font: 13px monospace; padding: 10px;
+    white-space: pre-wrap;
+  }
+
+  /* ---- touch controls (body.touch is set by auto-detection) ---- */
+  #c { touch-action: none; }
+  #joystick {
+    position: absolute; left: 26px; bottom: 34px; width: 128px; height: 128px;
+    border-radius: 50%; border: 2px solid rgba(107,90,54,0.75);
+    background: rgba(10,8,5,0.35); display: none; touch-action: none; z-index: 5;
+  }
+  #joyKnob {
+    position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px;
+    border-radius: 50%; background: rgba(201,168,60,0.40); border: 2px solid #6b5a36;
+    pointer-events: none;
+  }
+  .tbtn {
+    position: absolute; border-radius: 50%; border: 2px solid #6b5a36;
+    background: rgba(16,12,7,0.55); color: #d8c8a0; display: none;
+    align-items: center; justify-content: center; touch-action: none; z-index: 5;
+    text-shadow: 1px 1px 2px #000;
+  }
+  #btnAttack { right: 28px; bottom: 40px; width: 88px; height: 88px; font-size: 34px; }
+  #btnJump   { right: 134px; bottom: 32px; width: 58px; height: 58px; font-size: 22px; }
+  #btnInv    { right: 36px; bottom: 148px; width: 50px; height: 50px; font-size: 17px; }
+  #btnJrn    { right: 102px; bottom: 158px; width: 50px; height: 50px; font-size: 17px; }
+  #btnChr    { right: 166px; bottom: 142px; width: 50px; height: 50px; font-size: 17px; }
+  body.touch #joystick { display: block; }
+  body.touch .tbtn { display: flex; }
+  body.touch #crosshair, body.touch #pauseHint { display: none !important; }
+  body.touch #hud { left: 14px; top: 14px; bottom: auto; }
+  body.touch #hud .barOuter, body.touch #xpOuter { width: 190px; }
+  body.touch #msglog { top: 86px; left: 14px; }
+  body.touch #hudRight { right: 14px; top: 14px; bottom: auto; }
+  body.touch #enemybar { top: 64px; }
+  body.touch #prompt {
+    pointer-events: auto; bottom: 26%; padding: 10px 20px;
+    border: 2px solid #6b5a36; background: rgba(16,12,7,0.8);
+  }
+  body.touch #prompt:empty { display: none; }
+  body.touch #title h1 { font-size: 54px; letter-spacing: 16px; }
+  body.touch #inventory, body.touch #journal, body.touch #character {
+    left: 50%; right: auto; transform: translateX(-50%); width: min(400px, 94vw);
+    max-height: 70vh; overflow-y: auto;
+  }
+  body.touch #dialog { bottom: 12px; max-height: 82vh; overflow-y: auto; }
+  /* while any panel is open, the world controls get out of the way */
+  body.uiopen #joystick, body.uiopen .tbtn { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="nametags"></div>
+<div id="vignette"></div>
+<div id="crosshair"></div>
+
+<div id="hud">
+  <div class="barOuter"><div id="hpFill"></div></div>
+  <div id="xpOuter"><div id="xpFill"></div></div>
+  <div id="levelTxt">Level 1</div>
+</div>
+<div id="hudRight">
+  <div id="oreTxt">10 ore</div>
+  <div id="clockTxt">10:00</div>
+  <div id="netStatus">○ single player</div>
+</div>
+<div id="prompt"></div>
+<div id="pauseHint">— PAUSED — click to resume</div>
+<div id="msglog"></div>
+<div id="enemybar">
+  <div id="enemyname"></div>
+  <div class="barOuter"><div id="enemyfill"></div></div>
+</div>
+
+<div id="dialog" class="panel">
+  <div id="dlgName"></div>
+  <div id="dlgText"></div>
+  <div id="dlgOpts"></div>
+</div>
+
+<div id="inventory" class="panel">
+  <div class="panelClose" id="invClose">✕</div>
+  <div class="panelTitle">Inventory</div>
+  <div id="invList"></div>
+</div>
+
+<div id="journal" class="panel">
+  <div class="panelClose" id="jrnClose">✕</div>
+  <div class="panelTitle">Journal</div>
+  <div id="jrnList"></div>
+</div>
+
+<div id="character" class="panel">
+  <div class="panelClose" id="chrClose">✕</div>
+  <div class="panelTitle">Character</div>
+  <div id="chrList"></div>
+</div>
+
+<div id="death">
+  <h1>YOU ARE DEAD</h1>
+  <div id="respawnBtn">Wake up at the gate</div>
+</div>
+
+<div id="title">
+  <h1>GOTHIC</h1>
+  <h2>A BROWSER HOMAGE — BUILT FROM SCRATCH</h2>
+  <div id="titleStart">Click to enter the Colony</div>
+  <div id="titleControls">
+    WASD move &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; Shift walk &nbsp;·&nbsp; Space jump<br>
+    Left click attack &nbsp;·&nbsp; E talk &nbsp;·&nbsp; I inventory &nbsp;·&nbsp; J journal &nbsp;·&nbsp; C character
+  </div>
+</div>
+
+<div id="joystick"><div id="joyKnob"></div></div>
+<div id="btnAttack" class="tbtn">⚔</div>
+<div id="btnJump" class="tbtn">▲</div>
+<div id="btnInv" class="tbtn">I</div>
+<div id="btnJrn" class="tbtn">J</div>
+<div id="btnChr" class="tbtn">C</div>
+
+<div id="errbox"></div>
+<script>
+  window.onerror = function(msg, src, line) {
+    var e = document.getElementById('errbox');
+    e.style.display = 'block';
+    e.textContent += msg + '  @ ' + (src || '?') + ':' + line + '\n';
+  };
+</script>
+<script src="js/math3d.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/world.js"></script>
+<script src="js/character.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/net.js"></script>
+<script src="js/main.js"></script>
+<script src="js/touch.js"></script>
+<script src="js/test.js"></script>
+</body>
+</html>
